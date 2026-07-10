@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Tamagotchi",
+  "version": "0.1.0",
+  "description": "A pixel-art pet that lives on your web pages. It wanders, jumps, and complains when you poke it.",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "src/content/sprite.js",
+        "src/content/pet.js",
+        "src/content/input.js",
+        "src/content/overlay.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*/*.png"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
