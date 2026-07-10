@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tamagotchi Settings</title>
+
+  <!-- connect google fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- connect design stylesheet -->
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- 1. header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <span class="logo-icon">👾</span>
+        <h1 class="app-title">Tamagotchi <span class="accent">Settings</span></h1>
+      </div>
+      <p class="app-subtitle" data-i18n="app_subtitle">ブラウザペットの設定</p>
+    </header>
+
+    <!-- content -->
+    <main class="content-area">
+      <div class="language-group">
+        <button class="lang-btn" data-lang="en">EN</button>
+        <button class="lang-btn" data-lang="ja">JP</button>
+        <button class="lang-btn" data-lang="ko">KO</button>
+      </div>
+    </main>
+
+    <!-- footer -->
+    <footer class="app-footer">
+      <span class="status-dot green"></span>
+      <span id="status-message" data-i18n="status_message">設定は自動的に保存されます。</span>
+    </footer>
+
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
