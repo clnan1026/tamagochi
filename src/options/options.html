@@ -25,16 +25,60 @@
       <p class="app-subtitle" data-i18n="app_subtitle">ブラウザペットの設定</p>
     </header>
 
-    <!-- content -->
+    <!-- 2. content -->
     <main class="content-area">
-      <div class="language-group">
-        <button class="lang-btn" data-lang="en">EN</button>
-        <button class="lang-btn" data-lang="ja">JP</button>
-        <button class="lang-btn" data-lang="ko">KO</button>
-      </div>
+      
+      <!-- select character -->
+      <section class="settings-section">
+        <h2 class="section-title" data-i18n="char_section_title">👤 キャラクター選択</h2>
+        <div class="character-grid">
+          
+          <!-- Pinky Card -->
+          <div class="char-card" data-char="pink">
+            <div class="char-preview pink-preview"></div>
+            <div class="char-info">
+              <span class="char-name">Pinky</span>
+              <span class="char-desc" data-i18n="pink_desc">陽気で冒険が大好きな友達</span>
+            </div>
+            <div class="select-badge">✓</div>
+          </div>
+          
+          <!-- Owlet Card -->
+          <div class="char-card" data-char="owlet">
+            <div class="char-preview owlet-preview"></div>
+            <div class="char-info">
+              <span class="char-name">Owlet</span>
+              <span class="char-desc" data-i18n="owlet_desc">おとなしくて読書が大好きな友達</span>
+            </div>
+            <div class="select-badge">✓</div>
+          </div>
+          
+          <!-- Dudy Card -->
+          <div class="char-card" data-char="dude">
+            <div class="char-preview dude-preview"></div>
+            <div class="char-info">
+              <span class="char-name">Dudy</span>
+              <span class="char-desc" data-i18n="dude_desc">好奇心旺盛でいたずら好きな友達</span>
+            </div>
+            <div class="select-badge">✓</div>
+          </div>
+          
+        </div>
+      </section>
+
+      <!-- 2-2. select language -->
+      <section class="settings-section">
+        <h2 class="section-title" data-i18n="lang_section_title">🌐 言語設定 (Language)</h2>
+        <div class="language-group">
+          <button class="lang-btn" data-lang="en">EN</button>
+          <button class="lang-btn" data-lang="ja">JP</button>
+          <button class="lang-btn" data-lang="ko">KO</button>
+        </div>
+      </section>
+
     </main>
 
-    <!-- footer -->
+    <!-- 3. footer -->
     <footer class="app-footer">
       <span class="status-dot green"></span>
       <span id="status-message" data-i18n="status_message">設定は自動的に保存されます。</span>

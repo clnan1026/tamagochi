@@ -80,10 +80,11 @@
     bubbleTimer = setTimeout(() => bubbleEl.classList.remove("visible"), BUBBLE_MS);
   };
 
-  chrome.storage.local.get(["language"]).then((result) => {
+  chrome.storage.local.get(["language", "character"]).then((result) => {
     const savedLang = result.language || "ja";
+    const savedChar = result.character || "pink";
 
-    const sprite = new NS.Sprite(petEl, CHARACTER, SCALE);
+    const sprite = new NS.Sprite(petEl, savedChar, SCALE);
     const pet = new NS.Pet(sprite, { say });
     
     pet.setLanguage(savedLang);
@@ -91,8 +92,14 @@
     NS.attachInput(petEl, pet);
 
     chrome.storage.onChanged.addListener((changes, namespace) => {
-      if (namespace === "local" && changes.language) {
+      if (namespace !== "local") return;
+      
+      if (changes.language) {
         pet.setLanguage(changes.language.newValue);
+      }
+      
+      if (changes.character) {
+        sprite.setCharacter(changes.character.newValue);
       }
     });
 

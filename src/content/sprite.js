@@ -92,6 +92,10 @@
       // scaleX flip is applied around the element centre, so translate first.
       this.el.style.transform = `translate3d(${x}px, ${y}px, 0) scaleX(${this.facing})`;
     }
+    setCharacter(newCharacter) {
+      this.animations = animationsFor(newCharacter);
+      this.play(this.name, this.onEnd, true);
+    }
   }
 
   NS.Sprite = Sprite;
