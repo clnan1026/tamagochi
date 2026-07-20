@@ -4,7 +4,7 @@
   // Every sheet in the pack is a horizontal strip of 32x32 frames.
   const FRAME_SIZE = 32;
 
-  const CHARACTERS = ["pink", "owlet", "dude"];
+  const CHARACTERS = ["pink", "owlet", "dude", "shinchan"];
 
   const ANIMATIONS = {
     idle: { frames: 4, fps: 6, loop: true },
@@ -18,6 +18,10 @@
   function animationsFor(character) {
     const defs = {};
     for (const [name, def] of Object.entries(ANIMATIONS)) {
+      let frames = def.frames;
+      if (character === "shinchan") {
+        frames = 4;
+      }
       defs[name] = {
         ...def,
         url: chrome.runtime.getURL(`assets/${character}/${name}.png`),
