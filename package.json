@@ -5,9 +5,11 @@
   "description": "A pixel-art pet that roams your desktop.",
   "main": "electron/main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "package": "electron-packager . Tamagotchi --platform=darwin --arch=arm64 --icon=assets/icon.icns --overwrite"
   },
   "devDependencies": {
-    "electron": "latest"
+    "electron": "latest",
+    "electron-packager": "^17.1.2"
   }
 }
