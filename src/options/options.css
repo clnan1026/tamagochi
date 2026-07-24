@@ -148,7 +148,6 @@ body {
 .pink-preview { background-image: url('../../assets/pink/idle.png'); }
 .owlet-preview { background-image: url('../../assets/owlet/idle.png'); }
 .dude-preview { background-image: url('../../assets/dude/idle.png'); }
-.shinchan-preview { background-image: url('../../assets/shinchan/idle.png'); }
 
 .char-card:hover .char-preview,
 .char-card.selected .char-preview {

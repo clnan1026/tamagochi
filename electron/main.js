@@ -5,7 +5,7 @@ const { execFile } = require("child_process");
 
 const APP_ROOT = app.getAppPath();
 const DEFAULTS = { language: "ja", character: "pink" };
-const CHARACTERS = ["pink", "owlet", "dude", "shinchan"];
+const CHARACTERS = ["pink", "owlet", "dude"];
 const LANGUAGES = [["ja", "日本語"], ["en", "English"], ["ko", "한국어"]];
 
 let win = null;
@@ -30,12 +30,34 @@ function saveSettings() {
   }
 }
 
-function createWindow() {
-  // Cover the primary display's work area (excludes the menu bar/dock), so the
-  // pet walks along the real desktop floor and never hides under the dock.
-  const { x, y, width, height } = screen.getPrimaryDisplay().workArea;
+const sharedWebPreferences = () => ({
+  preload: path.join(__dirname, "preload.js"),
+  contextIsolation: true,
+  nodeIntegration: false,
+  sandbox: false, // preload needs process.argv to learn the app root
+  backgroundThrottling: false, // keep the pet animating while unfocused
+  additionalArguments: ["--app-root=" + APP_ROOT],
+});
 
+// The primary experience: a normal portrait window with the Start → Select →
+// Room flow (src/app/). Opened on launch.
+function createAppWindow() {
   win = new BrowserWindow({
+    width: 420,
+    height: 720,
+    minWidth: 380,
+    minHeight: 600,
+    title: "Tamagotchi",
+    webPreferences: sharedWebPreferences(),
+  });
+  win.loadFile(path.join(APP_ROOT, "src/app/index.html"));
+}
+
+// The transparent, click-through desktop overlay (src/desktop/). Kept for a future
+// "release to desktop" button — not opened on launch.
+function createOverlayWindow() {
+  const { x, y, width, height } = screen.getPrimaryDisplay().workArea;
+  const overlay = new BrowserWindow({
     x, y, width, height,
     transparent: true,
     frame: false,
@@ -46,24 +68,15 @@ function createWindow() {
     fullscreenable: false,
     hasShadow: false,
     skipTaskbar: true,
-    focusable: false, // never steal focus from the app the user is actually using
+    focusable: false,
     alwaysOnTop: true,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false, // preload needs process.argv to learn the app root
-      backgroundThrottling: false, // keep animating while unfocused (it always is)
-      additionalArguments: ["--app-root=" + APP_ROOT],
-    },
+    webPreferences: sharedWebPreferences(),
   });
-
-  win.setAlwaysOnTop(true, "screen-saver");
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  // Start fully click-through; the renderer flips this on when the cursor is
-  // over the pet. `forward` keeps mousemove flowing so hover detection works.
-  win.setIgnoreMouseEvents(true, { forward: true });
-  win.loadFile(path.join(APP_ROOT, "src/desktop/index.html"));
+  overlay.setAlwaysOnTop(true, "screen-saver");
+  overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlay.setIgnoreMouseEvents(true, { forward: true });
+  overlay.loadFile(path.join(APP_ROOT, "src/desktop/index.html"));
+  return overlay;
 }
 
 // --- battery -----------------------------------------------------------------
@@ -146,22 +159,27 @@ ipcMain.handle("settings:set", (_e, partial) => {
   return settings;
 });
 ipcMain.handle("battery:get", () => readBattery());
-ipcMain.on("mouse:setInteractive", (_e, interactive) => {
-  if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(!interactive, { forward: true });
+ipcMain.on("mouse:setInteractive", (e, interactive) => {
+  // Act on whichever window sent it (the overlay), not the global `win`.
+  const sender = BrowserWindow.fromWebContents(e.sender);
+  if (sender && !sender.isDestroyed()) sender.setIgnoreMouseEvents(!interactive, { forward: true });
 });
 
 // --- lifecycle ---------------------------------------------------------------
 app.whenReady().then(() => {
   loadSettings();
-  if (process.platform === "darwin" && app.dock) app.dock.hide(); // background agent, no dock icon
-  createWindow();
+  createAppWindow();
   buildTray();
   setInterval(refreshTray, 60_000);
   maybeRunSmoke();
 });
 
-// Tray app: keep running even though the window is never "closed".
-app.on("window-all-closed", () => {});
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) createAppWindow();
+});
+
+// The app window is the product; closing it quits (the tray's Quit does the same).
+app.on("window-all-closed", () => app.quit());
 
 // --- smoke test (TAMA_SMOKE=1): render, screenshot, poke, report, quit -------
 function maybeRunSmoke() {
@@ -174,42 +192,66 @@ function maybeRunSmoke() {
   });
   win.webContents.on("render-process-gone", (_e, d) => errors.push("render-gone: " + d.reason));
 
-  win.webContents.once("did-finish-load", () => {
+  const outDir = process.env.TAMA_SMOKE_OUT || app.getPath("temp");
+  const wc = win.webContents;
+  const js = (expr) => wc.executeJavaScript(expr);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const shot = async (name) => {
+    const img = await wc.capturePage();
+    fs.writeFileSync(path.join(outDir, name), img.toPNG());
+  };
+
+  wc.once("did-finish-load", () => {
     setTimeout(async () => {
-      const outDir = process.env.TAMA_SMOKE_OUT || app.getPath("temp");
+      const report = {};
       try {
-        const img = await win.webContents.capturePage();
-        fs.writeFileSync(path.join(outDir, "desktop-pet.png"), img.toPNG());
-      } catch (e) {
-        errors.push("capture: " + e.message);
-      }
+        // Start → Select
+        await shot("app-start.png");
+        await js(`document.getElementById('start-btn').click()`);
+        await wait(300);
+        report.selectCards = await js(`document.querySelectorAll('#screen-select .char-card').length`);
+        await shot("app-select.png");
 
-      // Drive a poke through the real renderer (injected events bypass OS click-through).
-      let poke = null;
-      try {
-        const rect = await win.webContents.executeJavaScript(
-          `(() => { const p = document.querySelector('.pet'); const r = p.getBoundingClientRect();
-             return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`
-        );
+        // Seed a hungry, slightly-hurt pet so Feed produces a visible change.
+        await js(`localStorage.setItem('tama-stats', JSON.stringify({ hp: 80, satiety: 20, lastSeen: Date.now() }))`);
+
+        // Select owlet → Room
+        await js(`document.querySelector('.char-card[data-char="owlet"]').click();
+                  document.getElementById('select-confirm').click()`);
+        await wait(1500); // stage lays out, pet spawns, first battery poll
+        await shot("app-room.png");
+
+        report.beforeBars = await js(`(() => {
+          const w = (id) => document.getElementById('fill-' + id).style.width;
+          return { hp: w('hp'), sat: w('satiety'), stam: w('stamina'),
+                   stamVal: document.getElementById('val-stamina').textContent }; })()`);
+
+        // Feed a few times → Satiety should rise
+        await js(`document.getElementById('btn-feed').click()`);
+        await wait(120);
+        await js(`document.getElementById('btn-feed').click()`);
+        await wait(300);
+        report.satietyAfterFeed = await js(`document.getElementById('fill-satiety').style.width`);
+        report.feedBubble = await js(`document.getElementById('bubble').textContent`);
+
+        // Poke the pet (injected click on the sprite) → hurt + bubble
+        const rect = await js(`(() => { const r = document.getElementById('pet').getBoundingClientRect();
+          return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
         for (const type of ["mouseMove", "mouseDown", "mouseUp"]) {
-          win.webContents.sendInputEvent({ type, x: rect.x, y: rect.y, button: "left", clickCount: 1 });
+          wc.sendInputEvent({ type, x: rect.x, y: rect.y, button: "left", clickCount: 1 });
         }
-        await new Promise((r) => setTimeout(r, 200));
-        poke = await win.webContents.executeJavaScript(
-          `(() => { const b = document.querySelector('.bubble');
-             return { visible: b.classList.contains('visible'), text: b.textContent }; })()`
-        );
+        await wait(200);
+        report.pokeBubble = await js(`({ visible: document.getElementById('bubble').classList.contains('visible'),
+          text: document.getElementById('bubble').textContent })`);
       } catch (e) {
-        errors.push("poke: " + e.message);
+        errors.push("drive: " + e.message);
       }
 
-      const batt = await readBattery();
-      console.log("SMOKE screenshot:", path.join(outDir, "desktop-pet.png"));
-      console.log("SMOKE battery:", JSON.stringify(batt));
-      console.log("SMOKE poke:", JSON.stringify(poke));
+      report.battery = await readBattery();
+      console.log("SMOKE report:", JSON.stringify(report));
       console.log("SMOKE console:", JSON.stringify(consoleMsgs));
       console.log("SMOKE errors:", JSON.stringify(errors));
       app.exit(errors.length ? 1 : 0);
-    }, 3000);
+    }, 1500);
   });
 }

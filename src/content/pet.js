@@ -16,14 +16,18 @@
   const randomBetween = (min, max) => min + Math.random() * (max - min);
 
   class Pet {
-    // `say` renders a speech bubble; supplied by the overlay.
-    constructor(sprite, { say }) {
+    // `say` renders a speech bubble; supplied by the host.
+    // `getBounds` returns the roaming area {width, height}; defaults to the window
+    // (extension + desktop overlay) but the app's pet room passes its stage size.
+    constructor(sprite, { say, getBounds } = {}) {
       this.sprite = sprite;
       this.say = say;
+      this.getBounds = getBounds || (() => ({ width: window.innerWidth, height: window.innerHeight }));
 
       this.lang = "ja";
+      this.speedScale = 1; // room lowers this when battery/stamina is low
 
-      this.x = randomBetween(0, Math.max(0, window.innerWidth - sprite.size));
+      this.x = randomBetween(0, this.maxX());
       this.y = this.groundY();
       this.vx = 0;
       this.vy = 0;
@@ -36,11 +40,11 @@
     }
 
     groundY() {
-      return window.innerHeight - this.sprite.size;
+      return this.getBounds().height - this.sprite.size;
     }
 
     maxX() {
-      return Math.max(0, window.innerWidth - this.sprite.size);
+      return Math.max(0, this.getBounds().width - this.sprite.size);
     }
 
     update(dt) {
@@ -87,7 +91,7 @@
     }
 
     #updateTravel(dt) {
-      const speed = this.state === "run" ? RUN_SPEED : WALK_SPEED;
+      const speed = (this.state === "run" ? RUN_SPEED : WALK_SPEED) * this.speedScale;
       const delta = this.targetX - this.x;
 
       if (Math.abs(delta) < ARRIVE_EPSILON || this.#atWall(delta)) {
@@ -142,6 +146,13 @@
     
     setLanguage(lang) {
       this.lang = lang;
+    }
+
+    // A happy hop, used by the pet room for Feed/Play reactions. Only fires from
+    // the ground so it can't interrupt a drag or an in-progress jump.
+    hop() {
+      if (this.state === "drag" || this.state === "air" || this.state === "hurt") return;
+      this.#jump();
     }
 
     poke() {

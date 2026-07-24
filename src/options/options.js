@@ -6,7 +6,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       pink_desc: "쾌활하고 모험을 즐기는 친구",
       owlet_desc: "차분하고 독서를 좋아하는 친구",
       dude_desc: "호기심 많고 장난기 가득한 친구",
-      shinchan_desc: "태풍을 부르는 5살 장난꾸러기 친구",
       lang_section_title: "🌐 언어 설정 (Language)",
       status_message: "설정은 자동으로 저장됩니다."
     },
@@ -16,7 +15,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       pink_desc: "Cheerful and loves adventure",
       owlet_desc: "Gentle and loves reading books",
       dude_desc: "Curious and full of mischief",
-      shinchan_desc: "A mischievous 5-year-old boy who calls the storm",
       lang_section_title: "🌐 Language Settings",
       status_message: "Settings are saved automatically."
     },
@@ -26,7 +24,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       pink_desc: "陽気で冒険が大好きな友達",
       owlet_desc: "おとなしくて読書が大好きな友達",
       dude_desc: "好奇心旺盛でいたずら好きな友達",
-      shinchan_desc: "嵐を呼ぶ５歳児！いたずら好きな友達",
       lang_section_title: "🌐 言語設定 (Language)",
       status_message: "設定は自動的に保存されます。"
     }
