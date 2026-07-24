@@ -48,6 +48,13 @@
       }
     }
 
+    // Revive after a faint: HP full, a modest Satiety head-start; Stamina is the
+    // live battery and is left untouched.
+    reset() {
+      this.hp = MAX;
+      this.satiety = 60;
+    }
+
     feed() {
       this.satiety = clamp(this.satiety + RATES.feedAmount);
     }

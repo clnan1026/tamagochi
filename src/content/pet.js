@@ -60,7 +60,11 @@
           this.#updateAir(dt);
           break;
         case "hurt":
+        case "react": // one-shot reaction (eat / playful / idle flourish)
           this.vx = 0;
+          break;
+        case "dead":
+          this.vx = 0; // fainted; holds the last death frame until revive()
           break;
         case "drag":
           // Position is driven by the pointer; no physics.
@@ -80,14 +84,27 @@
       if (this.timer > 0) return;
 
       const roll = Math.random();
-      if (roll < 0.15) {
+      if (roll < 0.1) {
         this.#jump();
+      } else if (roll < 0.2) {
+        // A little personality: an occasional throw or combo flourish, then rest.
+        this.#react(Math.random() < 0.5 ? "throw" : "attack2");
       } else {
         this.targetX = randomBetween(0, this.maxX());
-        const running = roll > 0.85;
+        const running = roll > 0.9;
         this.state = running ? "run" : "walk";
         this.sprite.play(running ? "run" : "walk");
       }
+    }
+
+    // A grounded one-shot animation that returns to idle when it finishes.
+    #react(anim) {
+      if (this.state === "drag" || this.state === "air" || this.state === "dead") return;
+      this.state = "react";
+      this.vx = 0;
+      this.vy = 0;
+      this.y = this.groundY();
+      this.sprite.play(anim, () => this.#rest(), true);
     }
 
     #updateTravel(dt) {
@@ -155,8 +172,34 @@
       this.#jump();
     }
 
+    // Feed reaction: a chomp. Play reaction: a jump or a combo flourish.
+    eat() {
+      this.#react("attack1");
+    }
+    playful() {
+      if (this.state === "drag" || this.state === "dead") return;
+      if (Math.random() < 0.5) this.#jump();
+      else this.#react("attack2");
+    }
+
+    // Faint when HP hits 0: play the death animation once and lock until revived.
+    die() {
+      if (this.state === "dead") return;
+      this.state = "dead";
+      this.vx = 0;
+      this.vy = 0;
+      this.y = this.groundY();
+      this.sprite.play("death", null, true);
+    }
+    revive() {
+      this.state = "idle";
+      this.timer = randomBetween(0.8, 3);
+      this.vx = 0;
+      this.sprite.play("idle", null, true);
+    }
+
     poke() {
-      if (this.state === "drag") return;
+      if (this.state === "drag" || this.state === "dead") return;
       this.state = "hurt";
       this.vx = 0;
       this.vy = 0;
