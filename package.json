@@ -1,0 +1,13 @@
+{
+  "name": "tamagotchi-desktop",
+  "productName": "Tamagotchi",
+  "version": "0.1.0",
+  "description": "A pixel-art pet that roams your desktop.",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "latest"
+  }
+}
