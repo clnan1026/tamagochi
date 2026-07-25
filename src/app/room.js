@@ -93,6 +93,13 @@
     set("fillHp", "valHp", stats.hp);
     set("fillSatiety", "valSatiety", stats.satiety);
     set("fillStamina", "valStamina", stats.stamina, stats.staminaKnown);
+
+    // Apply color highlighting to battery text based on charging state
+    if (stats.staminaKnown && stats.charging) {
+      els.valStamina.style.color = "var(--stamina)"; // Green highlight from design system
+    } else {
+      els.valStamina.style.color = ""; // Revert to default theme text color
+    }
   }
 
   function applyBehavior(now) {
@@ -173,6 +180,10 @@
     window.addEventListener("beforeunload", persist);
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) persist();
+    });
+
+    window.desktopBridge.onBatteryChanged?.(() => {
+      pollBattery();
     });
   }
 

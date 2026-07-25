@@ -12,4 +12,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   onSettingsChanged: (cb) => ipcRenderer.on("settings:changed", (_e, changes) => cb(changes)),
   setInteractive: (interactive) => ipcRenderer.send("mouse:setInteractive", interactive),
   getBattery: () => ipcRenderer.invoke("battery:get"),
+  onBatteryChanged: (cb) => ipcRenderer.on("battery:changed", () => cb()),
 });
