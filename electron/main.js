@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain } = require("electron");
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, powerMonitor } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { execFile } = require("child_process");
@@ -9,6 +9,7 @@ const CHARACTERS = ["pink", "owlet", "dude"];
 const LANGUAGES = [["ja", "日本語"], ["en", "English"], ["ko", "한국어"]];
 
 let win = null;
+let overlay = null;
 let tray = null;
 let settings = { ...DEFAULTS };
 
@@ -51,6 +52,18 @@ function createAppWindow() {
     webPreferences: sharedWebPreferences(),
   });
   win.loadFile(path.join(APP_ROOT, "src/app/index.html"));
+
+  // Prevent app from quitting when room window is closed; hide it instead
+  win.on("close", (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();
+      win.hide();
+    }
+  });
+
+  // Rebuild tray menu when room window visibility changes to toggle 'Open Room' option
+  win.on("show", () => refreshTray());
+  win.on("hide", () => refreshTray());
 }
 
 // The transparent, click-through desktop overlay (src/desktop/). Kept for a future
@@ -88,7 +101,7 @@ function readBattery() {
     execFile("/usr/bin/pmset", ["-g", "batt"], { timeout: 3000 }, (err, out) => {
       if (err) return resolve(null);
       const level = /(\d+)%/.exec(out);
-      const charging = /charg/i.test(out) || (/AC Power/.test(out) && !/discharging/i.test(out));
+      const charging = /; charging/i.test(out) || (/AC Power/.test(out) && !/discharging/i.test(out));
       resolve(level ? { level: +level[1], charging } : null);
     });
   });
@@ -105,28 +118,62 @@ function trayIcon() {
 async function refreshTray() {
   if (!tray) return;
   const batt = await readBattery();
+
+  const isVisible = win && !win.isDestroyed() && win.isVisible();
+
+  const openLabels = { ja: "部屋を開く", ko: "룸 열기", en: "Open Room" };
+  const quitLabels = { ja: "たまごっちを終了", ko: "다마고치 종료", en: "Quit Tamagotchi" };
+  const charLabels = { ja: "キャラクター", ko: "캐릭터 선택", en: "Character" };
+  const langLabels = { ja: "言語", ko: "언어 설정", en: "Language" };
+
+  const openLabel = openLabels[settings.language] || "Open Room";
+  const quitLabel = quitLabels[settings.language] || "Quit Tamagotchi";
+  const charLabel = charLabels[settings.language] || "Character";
+  const langLabel = langLabels[settings.language] || "Language";
+
+  const batteryLabel = batt 
+    ? `${batt.charging ? "⚡ " : "🔋 "}${batt.level}%${batt.charging ? " (charging)" : ""}`
+    : "Battery: n/a";
+
   const menu = Menu.buildFromTemplate([
     {
-      label: batt ? `🔋 ${batt.level}%${batt.charging ? " (charging)" : ""}` : "Battery: n/a",
-      enabled: false,
+      label: openLabel,
+      enabled: !isVisible,
+      click: () => {
+        if (win) {
+          win.show();
+          win.focus();
+        }
+      },
     },
     { type: "separator" },
     {
-      label: "Character",
+      label: batteryLabel,
+      enabled: true,
+    },
+    { type: "separator" },
+    {
+      label: charLabel,
       submenu: CHARACTERS.map((c) => ({
         label: c, type: "radio", checked: settings.character === c,
         click: () => changeSettings({ character: c }),
       })),
     },
     {
-      label: "Language",
+      label: langLabel,
       submenu: LANGUAGES.map(([value, label]) => ({
         label, type: "radio", checked: settings.language === value,
         click: () => changeSettings({ language: value }),
       })),
     },
     { type: "separator" },
-    { label: "Quit Tamagotchi", role: "quit" },
+    {
+      label: quitLabel,
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      },
+    },
   ]);
   tray.setImage(trayIcon());
   tray.setContextMenu(menu);
@@ -149,6 +196,7 @@ function changeSettings(partial) {
   if (Object.keys(changes).length === 0) return;
   saveSettings();
   if (win && !win.isDestroyed()) win.webContents.send("settings:changed", changes);
+  if (overlay && !overlay.isDestroyed()) overlay.webContents.send("settings:changed", changes);
   refreshTray();
 }
 
@@ -169,7 +217,19 @@ ipcMain.on("mouse:setInteractive", (e, interactive) => {
 app.whenReady().then(() => {
   loadSettings();
   createAppWindow();
+  overlay = createOverlayWindow();
   buildTray();
+
+  // Listen to macOS power transitions (plugging/unplugging charger)
+  powerMonitor.on("on-ac", () => {
+    refreshTray();
+    if (win && !win.isDestroyed()) win.webContents.send("battery:changed");
+  });
+  powerMonitor.on("on-battery", () => {
+    refreshTray();
+    if (win && !win.isDestroyed()) win.webContents.send("battery:changed");
+  });
+
   setInterval(refreshTray, 60_000);
   maybeRunSmoke();
 });
