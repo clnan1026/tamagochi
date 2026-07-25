@@ -9,6 +9,7 @@ const CHARACTERS = ["pink", "owlet", "dude"];
 const LANGUAGES = [["ja", "日本語"], ["en", "English"], ["ko", "한국어"]];
 
 let win = null;
+let overlay = null;
 let tray = null;
 let settings = { ...DEFAULTS };
 
@@ -149,6 +150,7 @@ function changeSettings(partial) {
   if (Object.keys(changes).length === 0) return;
   saveSettings();
   if (win && !win.isDestroyed()) win.webContents.send("settings:changed", changes);
+  if (overlay && !overlay.isDestroyed()) overlay.webContents.send("settings:changed", changes);
   refreshTray();
 }
 
@@ -169,6 +171,7 @@ ipcMain.on("mouse:setInteractive", (e, interactive) => {
 app.whenReady().then(() => {
   loadSettings();
   createAppWindow();
+  overlay = createOverlayWindow();
   buildTray();
   setInterval(refreshTray, 60_000);
   maybeRunSmoke();
