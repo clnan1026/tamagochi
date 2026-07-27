@@ -5,7 +5,7 @@
   const NS = (window.__tamagotchi ??= {});
   const Economy = NS.Economy; // loaded before room.js in index.html
 
-  const SCALE = 3; // big focal pet: 32 * 3 = 96px
+  const SCALE = 2.2; // big focal pet: 32 * 2.2 = 70.4px
   const MAX_DT = 0.05;
   const STATS_KEY = "tama-stats";
   const ECONOMY_KEY = "tama-economy";
@@ -704,7 +704,18 @@
       },
     };
 
-    const getBounds = () => ({ width: els.stage.clientWidth, height: els.stage.clientHeight });
+    const getBounds = () => {
+      let offset = 0;
+      if (currentScreen === "basic") {
+        offset = 35; // Stand slightly higher in the grass
+      } else if (currentScreen === "game") {
+        offset = 65; // Stand on the platform above the grid
+      }
+      return {
+        width: els.stage.clientWidth,
+        height: els.stage.clientHeight - offset
+      };
+    };
     sprite = new NS.Sprite(els.petEl, character, SCALE);
     pet = new NS.Pet(sprite, { say, getBounds });
     NS.attachInput(els.petEl, pet); // poke / drag / throw

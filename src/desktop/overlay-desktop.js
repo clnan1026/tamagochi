@@ -31,6 +31,11 @@
     pet.setLanguage(savedLang);
     NS.attachInput(petEl, pet);
 
+    petEl.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      window.desktopBridge.openAlarm?.();
+    });
+
     chrome.storage.onChanged.addListener((changes, namespace) => {
       if (namespace !== "local") return;
       if (changes.language) pet.setLanguage(changes.language.newValue);

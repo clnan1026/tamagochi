@@ -421,6 +421,11 @@
 
     modeTabs.forEach((t) => t.classList.toggle("active", t.dataset.mode === pomodoro.mode));
     updateTimerDisplay();
+    
+    window.desktopBridge.onNavigatePomodoro?.(() => {
+      showScreen("pomodoro");
+    });
+
     setInterval(tickPomodoro, 1000);
   })();
 })();

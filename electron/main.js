@@ -52,7 +52,11 @@ function createAppWindow() {
     title: "Tamagotchi",
     webPreferences: sharedWebPreferences(),
   });
-  win.loadFile(path.join(APP_ROOT, "src/app/index.html"));
+  
+  // Clear cache to force reload modified asset images
+  win.webContents.session.clearCache().finally(() => {
+    win.loadFile(path.join(APP_ROOT, "src/app/index.html"));
+  });
 
   // Prevent app from quitting when room window is closed; hide it instead
   win.on("close", (event) => {
@@ -232,6 +236,14 @@ ipcMain.on("mouse:setInteractive", (e, interactive) => {
   // Act on whichever window sent it (the overlay), not the global `win`.
   const sender = BrowserWindow.fromWebContents(e.sender);
   if (sender && !sender.isDestroyed()) sender.setIgnoreMouseEvents(!interactive, { forward: true });
+});
+
+ipcMain.on("action:openAlarm", () => {
+  if (win && !win.isDestroyed()) {
+    win.show();
+    win.focus();
+    win.webContents.send("navigate:pomodoro");
+  }
 });
 
 // --- lifecycle ---------------------------------------------------------------
