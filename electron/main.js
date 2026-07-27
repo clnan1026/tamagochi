@@ -298,6 +298,26 @@ function maybeRunSmoke() {
   wc.once("did-finish-load", () => {
     setTimeout(async () => {
       const report = {};
+      // Electron's higher-level webContents.sendInputEvent proved unreliable at
+      // hitting small targets in this build (confirmed via diagnostics: clicks
+      // that should land squarely on the pet silently missed). The raw CDP
+      // debugger's Input.dispatchMouseEvent is what real clicks are built on and
+      // reliably hits — use it for every pointer interaction in this test.
+      wc.debugger.attach("1.3");
+      const cdpMouse = async (type, x, y, opts = {}) =>
+        wc.debugger.sendCommand("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1, ...opts });
+      const click = async (x, y, button = "left") => {
+        await cdpMouse("mouseMoved", x, y);
+        await cdpMouse("mousePressed", x, y, { button });
+        await cdpMouse("mouseReleased", x, y, { button });
+      };
+      const dragItem = async (fromRect, toRect) => {
+        await cdpMouse("mouseMoved", fromRect.x, fromRect.y);
+        await cdpMouse("mousePressed", fromRect.x, fromRect.y);
+        await cdpMouse("mouseMoved", toRect.x, toRect.y, { buttons: 1 });
+        await cdpMouse("mouseReleased", toRect.x, toRect.y);
+      };
+
       try {
         // Start → Select
         await shot("app-start.png");
@@ -316,12 +336,6 @@ function maybeRunSmoke() {
         // just becomes deterministic for this run, which is harmless.
         await js(`Math.random = () => 0; void 0;`); // assignment exprs return the fn — not cloneable over IPC
 
-        const dragItem = async (fromRect, toRect) => {
-          wc.sendInputEvent({ type: "mouseMove", x: fromRect.x, y: fromRect.y });
-          wc.sendInputEvent({ type: "mouseDown", x: fromRect.x, y: fromRect.y, button: "left", clickCount: 1 });
-          wc.sendInputEvent({ type: "mouseMove", x: toRect.x, y: toRect.y });
-          wc.sendInputEvent({ type: "mouseUp", x: toRect.x, y: toRect.y, button: "left", clickCount: 1 });
-        };
         const centerOf = (selector) => js(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
           return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
 
@@ -331,6 +345,23 @@ function maybeRunSmoke() {
                   document.getElementById('select-confirm').click()`);
         await wait(1500); // stage lays out, pet spawns, first battery poll
         await shot("app-room.png");
+
+        // Directly verify the game loop is actually alive: sample the pet's
+        // transform and stat bars over real time. This is the exact thing the
+        // user reported broken ("character stuck and not moving").
+        const sampleMovement = async () => ({
+          transform: await js(`document.getElementById('pet').style.transform`),
+          satiety: await js(`document.getElementById('fill-satiety').style.width`),
+        });
+        const moveSample1 = await sampleMovement();
+        await wait(3000);
+        const moveSample2 = await sampleMovement();
+        report.gameLoopAlive = {
+          transformChanged: moveSample1.transform !== moveSample2.transform,
+          satietyTicked: moveSample1.satiety !== moveSample2.satiety,
+          before: moveSample1,
+          after: moveSample2,
+        };
 
         report.beforeBars = await js(`(() => {
           const w = (id) => document.getElementById('fill-' + id).style.width;
@@ -364,9 +395,7 @@ function maybeRunSmoke() {
 
         // Poke the pet (injected click on the sprite) → hurt + bubble
         const rect = await centerOf("#pet");
-        for (const type of ["mouseMove", "mouseDown", "mouseUp"]) {
-          wc.sendInputEvent({ type, x: rect.x, y: rect.y, button: "left", clickCount: 1 });
-        }
+        await click(rect.x, rect.y);
         await wait(200);
         report.pokeBubble = await js(`({ visible: document.getElementById('bubble').classList.contains('visible'),
           text: document.getElementById('bubble').textContent })`);
@@ -594,11 +623,12 @@ function maybeRunSmoke() {
         })`);
 
         // Right-click the pet → the task-tag should show the first *unchecked* task.
-        const petRect2 = await js(`(() => { const r = document.getElementById('pet').getBoundingClientRect();
-          return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
-        for (const type of ["mouseMove", "mouseDown", "mouseUp"]) {
-          wc.sendInputEvent({ type, x: petRect2.x, y: petRect2.y, button: "right", clickCount: 1 });
-        }
+        // CDP's Input.dispatchMouseEvent doesn't synthesize a native `contextmenu`
+        // DOM event for the right button (confirmed: no listener anywhere fires,
+        // a documented CDP limitation) — dispatch the real event directly instead,
+        // which exercises room.js's actual handler exactly as a genuine right
+        // click would.
+        await js(`document.getElementById('pet').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))`);
         await wait(150);
         report.taskTag = await js(`({
           visible: document.getElementById('task-tag').classList.contains('visible'),

@@ -649,10 +649,13 @@
         : ROOM_GRADIENTS[room.background.value] || "";
 
     // The plant/teddy decorations were Basic Field's specifically — every other
-    // room (including CSS-gradient ones) hides them.
+    // room (including CSS-gradient ones) hides them. The decor elements are
+    // optional (not present in every markup revision), so this must not throw
+    // if they're missing — a crash here previously aborted start() before it
+    // ever reached requestAnimationFrame(frame), freezing the whole pet.
     const showDecor = room.id === "basic";
-    els.decorLeft.classList.toggle("hidden", !showDecor);
-    els.decorRight.classList.toggle("hidden", !showDecor);
+    els.decorLeft?.classList.toggle("hidden", !showDecor);
+    els.decorRight?.classList.toggle("hidden", !showDecor);
 
     els.swiperLabel.textContent = localize(room.names, lang);
     renderTray();
