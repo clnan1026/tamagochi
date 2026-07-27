@@ -31,6 +31,8 @@
       this.el = el;
       this.scale = scale;
       this.size = FRAME_SIZE * scale;
+      this.el.style.width = `${this.size}px`;
+      this.el.style.height = `${this.size}px`;
       this.animations = animationsFor(character);
       this.name = null;
       this.frame = 0;
