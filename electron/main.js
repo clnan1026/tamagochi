@@ -325,6 +325,186 @@ function maybeRunSmoke() {
         await wait(200);
         report.pokeBubble = await js(`({ visible: document.getElementById('bubble').classList.contains('visible'),
           text: document.getElementById('bubble').textContent })`);
+
+        // The rock: present, positioned at the stage's left edge (placeRock(0) on
+        // room start), and pointed at the current character's rock.png.
+        report.rock = await js(`(() => {
+          const r = document.getElementById('rock');
+          const cs = getComputedStyle(r);
+          return { bg: cs.backgroundImage, transform: cs.transform };
+        })()`);
+
+        // Feed once more so eat() (attack1) is exercised distinctly from the
+        // earlier hop-era check, then sample mid-animation frames.
+        await js(`document.getElementById('btn-feed').click()`);
+        report.eatFrames = [];
+        for (let i = 0; i < 4; i++) {
+          await wait(60);
+          report.eatFrames.push(await js(`getComputedStyle(document.getElementById('pet')).backgroundPosition`));
+        }
+
+        // Death + revive: re-enter the room with HP already at 0 (the offline-decay
+        // dead-on-load path) and confirm the game-over overlay + death pose appear.
+        await js(`document.getElementById('room-back').click()`); // → back to Select
+        await wait(150);
+        await js(`localStorage.setItem('tama-stats', JSON.stringify({ hp: 0, satiety: 0, lastSeen: Date.now() }))`);
+        await js(`document.querySelector('.char-card[data-char="pink"]').click();
+                  document.getElementById('select-confirm').click()`);
+        await wait(400);
+        report.gameOverOnLoad = await js(`({
+          overlayHidden: document.getElementById('gameover').hidden,
+          feedDisabled: document.getElementById('btn-feed').disabled,
+          spriteAnim: getComputedStyle(document.getElementById('pet')).backgroundImage.includes('death'),
+        })`);
+        await shot("app-gameover.png");
+
+        await js(`document.getElementById('btn-revive').click()`);
+        await wait(300);
+        report.afterRevive = await js(`({
+          overlayHidden: document.getElementById('gameover').hidden,
+          feedDisabled: document.getElementById('btn-feed').disabled,
+          hpWidth: document.getElementById('fill-hp').style.width,
+        })`);
+
+        // --- Pomodoro screen: navigate, tabs, task cap, alarm wiring, right-click ---
+        await js(`document.getElementById('room-pomodoro').click()`);
+        await wait(200);
+        report.pomodoroScreenActive = await js(
+          `document.getElementById('screen-pomodoro').classList.contains('active')`
+        );
+        await shot("app-pomodoro.png");
+
+        report.timerByMode = {};
+        for (const mode of ["pomodoro", "break"]) {
+          await js(`document.querySelector('.mode-tab[data-mode="${mode}"]').click()`);
+          await wait(50);
+          report.timerByMode[mode] = await js(`document.getElementById('timer-display').textContent`);
+        }
+        await js(`document.querySelector('.mode-tab[data-mode="pomodoro"]').click()`);
+
+        // Custom durations: open the editor, set Pomodoro=10min/Break=3min, save,
+        // and confirm both the display and the OTHER mode's tab pick it up.
+        await js(`document.getElementById('duration-edit-btn').click()`);
+        await wait(50);
+        report.durationEditorOpen = await js(`!document.getElementById('duration-editor').hidden`);
+        await js(`(() => {
+          document.getElementById('duration-pomodoro').value = 10;
+          document.getElementById('duration-break').value = 3;
+        })()`);
+        await js(`document.getElementById('duration-save').click()`);
+        await wait(50);
+        report.afterCustomDuration = {
+          editorClosed: await js(`document.getElementById('duration-editor').hidden`),
+          pomodoro: await js(`document.getElementById('timer-display').textContent`),
+        };
+        await js(`document.querySelector('.mode-tab[data-mode="break"]').click()`);
+        await wait(50);
+        report.customBreakDisplay = await js(`document.getElementById('timer-display').textContent`);
+
+        // The editor should be locked out while a session is actually running.
+        await js(`document.querySelector('.mode-tab[data-mode="pomodoro"]').click()`);
+        await js(`document.getElementById('timer-toggle').click()`); // Start
+        await wait(50);
+        report.editLockedWhileRunning = await js(`document.getElementById('duration-edit-btn').disabled`);
+        await js(`document.getElementById('timer-toggle').click()`); // Pause again
+        await wait(50);
+        await js(`document.getElementById('timer-reset').click()`); // back to a clean idle state
+
+        // Add tasks up to the 4-slot cap.
+        for (const text of ["Write the report", "Review PR", "Reply to emails", "Plan tomorrow"]) {
+          await js(`document.getElementById('task-add').click()`);
+          await js(`(() => {
+            const input = document.querySelector('.task-input');
+            input.value = ${JSON.stringify(text)};
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+          })()`);
+          await wait(50);
+        }
+        report.taskCountAt4 = await js(`document.querySelectorAll('.task-row').length`);
+        report.addDisabledAt4 = await js(`document.getElementById('task-add').disabled`);
+        await js(`document.getElementById('task-add').click()`); // should no-op: already at cap
+        await wait(50);
+        report.taskCountAfterAttempted5th = await js(`document.querySelectorAll('.task-row').length`);
+        await shot("app-pomodoro-tasks.png");
+
+        // Check the first task off — the right-click reveal below should then
+        // skip it and show the second (first *unchecked*) task instead.
+        await js(`document.querySelector('.task-checkbox').click()`);
+        await wait(50);
+        report.firstTaskDone = await js(`document.querySelector('.task-row').classList.contains('done')`);
+
+        await js(`document.getElementById('pomodoro-back').click()`); // → Room, pet still mounted
+        await wait(200);
+
+        // Exercise the exact real functions app.js calls when a session finishes.
+        // The countdown timing itself is proven deterministically & headlessly in
+        // pomodoro-test.js; this proves the DOM/audio wiring doesn't throw and the
+        // pet actually reacts.
+        let alarmErr = null;
+        try {
+          await js(`window.__tamagotchi.playAlarm(); window.__tamagotchi.Room.onAlarm();`);
+        } catch (e) {
+          alarmErr = e.message;
+        }
+        report.alarmWiringError = alarmErr;
+        await wait(150);
+        report.bubbleAfterAlarm = await js(`({
+          visible: document.getElementById('bubble').classList.contains('visible'),
+          text: document.getElementById('bubble').textContent,
+        })`);
+
+        // Right-click the pet → the task-tag should show the first *unchecked* task.
+        const petRect2 = await js(`(() => { const r = document.getElementById('pet').getBoundingClientRect();
+          return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
+        for (const type of ["mouseMove", "mouseDown", "mouseUp"]) {
+          wc.sendInputEvent({ type, x: petRect2.x, y: petRect2.y, button: "right", clickCount: 1 });
+        }
+        await wait(150);
+        report.taskTag = await js(`({
+          visible: document.getElementById('task-tag').classList.contains('visible'),
+          text: document.getElementById('task-tag').textContent,
+        })`);
+        await shot("app-room-taskreveal.png");
+
+        // --- Field Swiper / Shop stub (merged in from the Lee_Mac branch) ---
+        report.swiperBasic = await js(`document.getElementById('swiper-label').textContent`);
+        await js(`document.getElementById('swiper-next').click()`);
+        await wait(150);
+        report.swiperGame = await js(`({
+          label: document.getElementById('swiper-label').textContent,
+          fieldGameClass: document.getElementById('stage').classList.contains('field-game'),
+        })`);
+        await shot("app-room-gamefield.png");
+
+        await js(`document.getElementById('swiper-prev').click()`);
+        await wait(150);
+        report.swiperBackToBasic = await js(
+          `!document.getElementById('stage').classList.contains('field-game')`
+        );
+
+        // A Shop action button lives inside the *currently active* group only.
+        await js(`document.querySelector('.actions-group.active [data-action="shop"]').click()`);
+        await wait(150);
+        report.shopView = await js(`({
+          shopVisible: getComputedStyle(document.getElementById('shop-view')).display !== 'none',
+          stageHidden: getComputedStyle(document.getElementById('stage')).display === 'none',
+        })`);
+        await shot("app-room-shop.png");
+
+        await js(`document.querySelector('.actions-group.active [data-action="field"]').click()`);
+        await wait(150);
+        report.backFromShop = await js(
+          `getComputedStyle(document.getElementById('stage')).display !== 'none'`
+        );
+
+        // The "Alarm" action button (not the topbar shortcut) should also reach
+        // Pomodoro — this is the real feature now standing in for the old stub.
+        await js(`document.querySelector('.actions-group.active [data-action="alarm"]').click()`);
+        await wait(150);
+        report.alarmActionOpensPomodoro = await js(
+          `document.getElementById('screen-pomodoro').classList.contains('active')`
+        );
+        await js(`document.getElementById('pomodoro-back').click()`);
       } catch (e) {
         errors.push("drive: " + e.message);
       }

@@ -68,6 +68,7 @@
       <div class="room-topbar">
         <button id="room-back" class="icon-btn" title="Change character">‹</button>
         <span class="pet-name" id="room-pet-name">Pinky</span>
+        <button id="room-pomodoro" class="icon-btn" title="Pomodoro">⏰</button>
       </div>
 
       <div class="stats">
@@ -102,6 +103,7 @@
         <div class="dust" id="dust"></div>
         <div class="rock" id="rock" title="tap to reset"></div>
         <div class="bubble" id="bubble"></div>
+        <div class="task-tag" id="task-tag"></div>
         <div class="pet" id="pet"></div>
         <div class="gameover" id="gameover" hidden>
           <div class="gameover-card">
@@ -116,14 +118,6 @@
         <div class="menu-view-content">
           <span class="menu-icon">🛒</span>
           <h2 class="menu-title" data-i18n="shop_title">Shop</h2>
-          <p class="menu-desc" data-i18n="under_construction">Under Construction...</p>
-        </div>
-      </div>
-
-      <div class="menu-view" id="alarm-view" style="display: none;">
-        <div class="menu-view-content">
-          <span class="menu-icon">⏰</span>
-          <h2 class="menu-title" data-i18n="alarm_title">Alarm</h2>
           <p class="menu-desc" data-i18n="under_construction">Under Construction...</p>
         </div>
       </div>
@@ -149,12 +143,47 @@
           <button class="btn btn-alarm" data-action="alarm" data-i18n="btn_alarm">⏰ Alarm</button>
           <button class="btn btn-field" data-action="field" data-i18n="btn_field">🏡 Field</button>
         </div>
+      </div>
+    </section>
 
-        <!-- Actions for Alarm Screen -->
-        <div class="actions-group actions-split-2" id="actions-alarm">
-          <button class="btn btn-shop" data-action="shop" data-i18n="btn_shop">🛒 Shop</button>
-          <button class="btn btn-field" data-action="field" data-i18n="btn_field">🏡 Field</button>
-        </div>
+    <!-- 4. Pomodoro -->
+    <section id="screen-pomodoro" class="screen">
+      <div class="room-topbar">
+        <button id="pomodoro-back" class="icon-btn" title="Back">‹</button>
+        <span class="pet-name" data-i18n="pomodoro_heading">Pomodoro</span>
+      </div>
+
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="pomodoro" data-i18n="mode_pomodoro">Pomodoro</button>
+        <button class="mode-tab" data-mode="break" data-i18n="mode_break">Break</button>
+        <button id="duration-edit-btn" class="icon-btn" title="Edit durations">⚙</button>
+      </div>
+
+      <div class="timer-display" id="timer-display">25:00</div>
+
+      <div class="timer-actions">
+        <button id="timer-reset" class="icon-btn" title="Reset">↺</button>
+        <button id="timer-toggle" class="btn" data-i18n="start_timer_button">Start</button>
+      </div>
+
+      <div class="duration-editor" id="duration-editor" hidden>
+        <label class="duration-field">
+          <span data-i18n="mode_pomodoro">Pomodoro</span>
+          <input type="number" id="duration-pomodoro" class="duration-input" min="1" max="180" />
+          <span data-i18n="minutes_unit">min</span>
+        </label>
+        <label class="duration-field">
+          <span data-i18n="mode_break">Break</span>
+          <input type="number" id="duration-break" class="duration-input" min="1" max="180" />
+          <span data-i18n="minutes_unit">min</span>
+        </label>
+        <button id="duration-save" class="btn" data-i18n="save_button">Save</button>
+      </div>
+
+      <div class="task-section">
+        <h2 class="section-title" data-i18n="tasks_heading">Tasks</h2>
+        <div class="task-list" id="task-list"></div>
+        <button id="task-add" class="task-add" data-i18n="add_task_button">+ Add Task</button>
       </div>
     </section>
 
@@ -164,6 +193,8 @@
     <script src="../content/pet.js"></script>
     <script src="../content/input.js"></script>
     <script src="stats.js"></script>
+    <script src="pomodoro.js"></script>
+    <script src="alarm.js"></script>
     <script src="room.js"></script>
     <script src="app.js"></script>
   </body>

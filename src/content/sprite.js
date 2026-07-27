@@ -104,7 +104,9 @@
     }
     setCharacter(newCharacter) {
       this.animations = animationsFor(newCharacter);
-      this.play(this.name, this.onEnd, true);
+      // If nothing has played yet, there's no current animation to re-apply —
+      // play() would throw on a null name. Leave it for the first real play().
+      if (this.name) this.play(this.name, this.onEnd, true);
     }
   }
 
