@@ -55,12 +55,14 @@
       this.satiety = 60;
     }
 
-    feed() {
-      this.satiety = clamp(this.satiety + RATES.feedAmount);
+    // `amount`/`cost` let the room pass the dragged food/toy's actual value; the
+    // default preserves the original flat behavior for any other caller.
+    feed(amount = RATES.feedAmount) {
+      this.satiety = clamp(this.satiety + amount);
     }
 
-    play() {
-      this.satiety = clamp(this.satiety - RATES.playSatietyCost);
+    play(cost = RATES.playSatietyCost) {
+      this.satiety = clamp(this.satiety - cost);
     }
 
     // Stamina is the battery level (0–100); charging is informational.

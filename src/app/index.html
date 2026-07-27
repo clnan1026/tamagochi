@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&family=Noto+Sans+JP:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="app.css" />
@@ -67,6 +67,10 @@
     <section id="screen-room" class="screen">
       <div class="room-topbar">
         <button id="room-back" class="icon-btn" title="Change character">‹</button>
+        <div class="coin-badge" id="coin-badge">
+          <span class="coin-icon"></span>
+          <span id="coin-count">0</span>
+        </div>
         <span class="pet-name" id="room-pet-name">Pinky</span>
         <button id="room-pomodoro" class="icon-btn" title="Pomodoro">⏰</button>
       </div>
@@ -92,7 +96,7 @@
       <!-- Field Swiper -->
       <div class="field-swiper" id="field-swiper">
         <button class="swiper-btn" id="swiper-prev">‹</button>
-        <span class="swiper-label" id="swiper-label" data-i18n="field_basic">Basic Field</span>
+        <span class="swiper-label" id="swiper-label">Basic Field</span>
         <button class="swiper-btn" id="swiper-next">›</button>
       </div>
 
@@ -114,31 +118,32 @@
         </div>
       </div>
 
+      <!-- Drag-and-drop tray: food in the Kitchen room, toys in any Field room.
+           Drag an icon onto the pet to use it; drop elsewhere and it snaps back. -->
+      <div class="item-tray" id="item-tray"></div>
+
       <div class="menu-view" id="shop-view" style="display: none;">
-        <div class="menu-view-content">
-          <span class="menu-icon">🛒</span>
+        <div class="shop-header">
           <h2 class="menu-title" data-i18n="shop_title">Shop</h2>
-          <p class="menu-desc" data-i18n="under_construction">Under Construction...</p>
+          <div class="coin-badge">
+            <span class="coin-icon"></span>
+            <span id="shop-coin-count">0</span>
+          </div>
         </div>
+        <div class="shop-tabs">
+          <button class="shop-tab active" data-category="foods" data-i18n="shop_tab_foods">Food</button>
+          <button class="shop-tab" data-category="toys" data-i18n="shop_tab_toys">Toys</button>
+          <button class="shop-tab" data-category="rooms" data-i18n="shop_tab_rooms">Rooms</button>
+        </div>
+        <div class="shop-grid" id="shop-grid"></div>
       </div>
 
-      <!-- Bottom action button groups -->
+      <!-- Bottom action buttons -->
       <div class="actions-container">
-        <!-- Actions for Basic Field -->
-        <div class="actions-group active" id="actions-basic">
+        <div class="actions-group active" id="actions-room">
           <button class="btn btn-alarm" data-action="alarm" data-i18n="btn_alarm">⏰ Alarm</button>
           <button class="btn btn-shop" data-action="shop" data-i18n="btn_shop">🛒 Shop</button>
-          <button class="btn btn-feed" id="btn-feed" data-i18n="feed_button">🍖 Feed</button>
         </div>
-
-        <!-- Actions for Game Field -->
-        <div class="actions-group" id="actions-game">
-          <button class="btn btn-alarm" data-action="alarm" data-i18n="btn_alarm">⏰ Alarm</button>
-          <button class="btn btn-shop" data-action="shop" data-i18n="btn_shop">🛒 Shop</button>
-          <button class="btn btn-play" id="btn-play" data-i18n="play_button">🎮 Play</button>
-        </div>
-
-        <!-- Actions for Shop Screen -->
         <div class="actions-group actions-split-2" id="actions-shop">
           <button class="btn btn-alarm" data-action="alarm" data-i18n="btn_alarm">⏰ Alarm</button>
           <button class="btn btn-field" data-action="field" data-i18n="btn_field">🏡 Field</button>
@@ -195,6 +200,7 @@
     <script src="stats.js"></script>
     <script src="pomodoro.js"></script>
     <script src="alarm.js"></script>
+    <script src="economy.js"></script>
     <script src="room.js"></script>
     <script src="app.js"></script>
   </body>

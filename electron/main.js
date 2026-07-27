@@ -294,10 +294,27 @@ function maybeRunSmoke() {
         report.selectCards = await js(`document.querySelectorAll('#screen-select .char-card').length`);
         await shot("app-select.png");
 
-        // Seed a hungry, slightly-hurt pet so Feed produces a visible change.
+        // Seed a hungry, slightly-hurt pet + a starter coin balance so drag actions
+        // produce a visible change without waiting for real spawn timers.
         await js(`localStorage.setItem('tama-stats', JSON.stringify({ hp: 80, satiety: 20, lastSeen: Date.now() }))`);
+        await js(`localStorage.setItem('tama-economy', JSON.stringify({ coins: 300 }))`);
+        // Shrinks the coin-spawn wait to its real floor (still real time, not
+        // eliminated — production spawn cadence is untouched) by removing
+        // Math.random()'s jitter component; other randomness (wander, phrases)
+        // just becomes deterministic for this run, which is harmless.
+        await js(`Math.random = () => 0; void 0;`); // assignment exprs return the fn — not cloneable over IPC
+
+        const dragItem = async (fromRect, toRect) => {
+          wc.sendInputEvent({ type: "mouseMove", x: fromRect.x, y: fromRect.y });
+          wc.sendInputEvent({ type: "mouseDown", x: fromRect.x, y: fromRect.y, button: "left", clickCount: 1 });
+          wc.sendInputEvent({ type: "mouseMove", x: toRect.x, y: toRect.y });
+          wc.sendInputEvent({ type: "mouseUp", x: toRect.x, y: toRect.y, button: "left", clickCount: 1 });
+        };
+        const centerOf = (selector) => js(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+          return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
 
         // Select owlet → Room
+        const roomEntryTime = Date.now();
         await js(`document.querySelector('.char-card[data-char="owlet"]').click();
                   document.getElementById('select-confirm').click()`);
         await wait(1500); // stage lays out, pet spawns, first battery poll
@@ -307,18 +324,34 @@ function maybeRunSmoke() {
           const w = (id) => document.getElementById('fill-' + id).style.width;
           return { hp: w('hp'), sat: w('satiety'), stam: w('stamina'),
                    stamVal: document.getElementById('val-stamina').textContent }; })()`);
+        report.coinBadge = await js(`document.getElementById('coin-count').textContent`);
 
-        // Feed a few times → Satiety should rise
-        await js(`document.getElementById('btn-feed').click()`);
-        await wait(120);
-        await js(`document.getElementById('btn-feed').click()`);
-        await wait(300);
-        report.satietyAfterFeed = await js(`document.getElementById('fill-satiety').style.width`);
-        report.feedBubble = await js(`document.getElementById('bubble').textContent`);
+        // Basic Field is a toy-type room — the tray should offer the free Ball.
+        report.trayInBasic = await js(
+          `Array.from(document.querySelectorAll('#item-tray .tray-item')).map((el) => el.textContent.trim())`
+        );
+
+        // Drag the Ball onto the pet → Play effect (Satiety drops, +3 coins, reaction).
+        await dragItem(await centerOf("#item-tray .tray-item"), await centerOf("#pet"));
+        await wait(200);
+        report.afterPlayDrag = await js(`({
+          satiety: document.getElementById('fill-satiety').style.width,
+          coins: document.getElementById('coin-count').textContent,
+          bubble: document.getElementById('bubble').textContent,
+        })`);
+
+        // Drag a tray item and drop it far from the pet → should snap back, no effect.
+        const trayBeforeMiss = await centerOf("#item-tray .tray-item");
+        await dragItem(trayBeforeMiss, { x: 5, y: 5 });
+        await wait(400); // let the snap-back transition finish
+        report.afterMissDrag = await js(`({
+          satiety: document.getElementById('fill-satiety').style.width,
+          coins: document.getElementById('coin-count').textContent,
+          ghostGone: document.querySelectorAll('.drag-ghost').length === 0,
+        })`);
 
         // Poke the pet (injected click on the sprite) → hurt + bubble
-        const rect = await js(`(() => { const r = document.getElementById('pet').getBoundingClientRect();
-          return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
+        const rect = await centerOf("#pet");
         for (const type of ["mouseMove", "mouseDown", "mouseUp"]) {
           wc.sendInputEvent({ type, x: rect.x, y: rect.y, button: "left", clickCount: 1 });
         }
@@ -334,17 +367,112 @@ function maybeRunSmoke() {
           return { bg: cs.backgroundImage, transform: cs.transform };
         })()`);
 
-        // Feed once more so eat() (attack1) is exercised distinctly from the
-        // earlier hop-era check, then sample mid-animation frames.
-        await js(`document.getElementById('btn-feed').click()`);
-        report.eatFrames = [];
-        for (let i = 0; i < 4; i++) {
-          await wait(60);
-          report.eatFrames.push(await js(`getComputedStyle(document.getElementById('pet')).backgroundPosition`));
+        // --- Cycle rooms: Basic → Game → Kitchen. Kitchen swaps the tray to food. ---
+        await js(`document.getElementById('swiper-next').click()`); // → Game
+        await wait(150);
+        report.roomGame = await js(`document.getElementById('swiper-label').textContent`);
+        await js(`document.getElementById('swiper-next').click()`); // → Kitchen
+        await wait(150);
+        report.roomKitchen = await js(`document.getElementById('swiper-label').textContent`);
+        report.trayInKitchen = await js(
+          `Array.from(document.querySelectorAll('#item-tray .tray-item')).map((el) => el.textContent.trim())`
+        );
+        await shot("app-room-kitchen.png");
+
+        // Drag the free Kibble onto the pet in the Kitchen → Feed effect.
+        const satietyBeforeFeed = await js(`document.getElementById('fill-satiety').style.width`);
+        await dragItem(await centerOf("#item-tray .tray-item"), await centerOf("#pet"));
+        await wait(200);
+        report.afterFeedDrag = {
+          satietyBefore: satietyBeforeFeed,
+          satietyAfter: await js(`document.getElementById('fill-satiety').style.width`),
+          coins: await js(`document.getElementById('coin-count').textContent`),
+        };
+
+        await js(`document.getElementById('swiper-prev').click()`); // → back to Game (a Field room)
+        await wait(150);
+
+        // --- Coin/poop spawn: real-time wait at the (jitter-removed) 25s floor ----
+        report.elapsedBeforeCoinWait = Date.now() - roomEntryTime;
+        let pickupKind = null;
+        const spawnDeadline = Date.now() + 45_000;
+        while (Date.now() < spawnDeadline) {
+          await wait(2000);
+          pickupKind = await js(`(() => {
+            if (document.querySelector('.stage-pickup.coin')) return 'coin';
+            if (document.querySelector('.stage-pickup.poop')) return 'poop';
+            return null;
+          })()`);
+          if (pickupKind) break;
         }
+        report.pickupSpawned = pickupKind;
+        if (pickupKind) {
+          const selector = ".stage-pickup." + pickupKind;
+          const coinsBefore = await js(`document.getElementById('coin-count').textContent`);
+          await dragItem(await centerOf(selector), await centerOf(selector));
+          await wait(150);
+          report.afterPickupCollect = {
+            coinsBefore,
+            coinsAfter: await js(`document.getElementById('coin-count').textContent`),
+            pickupGone: await js(`!document.querySelector(${JSON.stringify(selector)})`),
+          };
+        }
+        await shot("app-room-coinpickup.png");
+
+        // --- Shop: buy a food, a toy, and a room ------------------------------------
+        await js(`document.querySelector('.actions-group.active [data-action="shop"]').click()`);
+        await wait(150);
+        report.shopView = await js(`({
+          shopVisible: getComputedStyle(document.getElementById('shop-view')).display !== 'none',
+          stageHidden: getComputedStyle(document.getElementById('stage')).display === 'none',
+        })`);
+        await shot("app-shop-food.png");
+
+        // Note: room.js's buy handler calls renderShop(), which rebuilds the whole
+        // grid — so the button/card must be re-queried *after* the click rather
+        // than reusing the pre-click reference, which would be stale/detached.
+        report.buyFood = await js(`(() => {
+          const before = document.querySelector('#shop-grid .shop-item');
+          const name = before.querySelector('.shop-item-name').textContent;
+          before.querySelector('button').click();
+          const after = document.querySelector('#shop-grid .shop-item');
+          return { name, qtyAfter: after.querySelector('.shop-item-qty').textContent };
+        })()`);
+        report.shopCoinsAfterFoodBuy = await js(`document.getElementById('shop-coin-count').textContent`);
+
+        await js(`document.querySelector('.shop-tab[data-category="toys"]').click()`);
+        await wait(100);
+        await shot("app-shop-toys.png");
+        report.buyToy = await js(`(() => {
+          document.querySelector('#shop-grid .shop-item button').click();
+          return document.querySelector('#shop-grid .shop-item button').textContent;
+        })()`);
+
+        await js(`document.querySelector('.shop-tab[data-category="rooms"]').click()`);
+        await wait(100);
+        await shot("app-shop-rooms.png");
+        report.buyRoom = await js(`(() => {
+          document.querySelector('#shop-grid .shop-item button').click();
+          return document.querySelector('#shop-grid .shop-item button').textContent;
+        })()`);
+
+        await js(`document.querySelector('.actions-group.active [data-action="field"]').click()`);
+        await wait(200);
+        report.backFromShop = await js(`getComputedStyle(document.getElementById('stage')).display !== 'none'`);
+
+        // Cycle the swiper through every owned room, confirming the newly bought
+        // one now appears in the rotation with a real background applied.
+        const roomLabels = [];
+        for (let i = 0; i < 6; i++) {
+          roomLabels.push(await js(`document.getElementById('swiper-label').textContent`));
+          await js(`document.getElementById('swiper-next').click()`);
+          await wait(150);
+        }
+        report.roomCycle = roomLabels;
 
         // Death + revive: re-enter the room with HP already at 0 (the offline-decay
-        // dead-on-load path) and confirm the game-over overlay + death pose appear.
+        // dead-on-load path) and confirm the game-over overlay + death pose appear,
+        // and that the item-tray is cleared while fainted.
         await js(`document.getElementById('room-back').click()`); // → back to Select
         await wait(150);
         await js(`localStorage.setItem('tama-stats', JSON.stringify({ hp: 0, satiety: 0, lastSeen: Date.now() }))`);
@@ -353,7 +481,7 @@ function maybeRunSmoke() {
         await wait(400);
         report.gameOverOnLoad = await js(`({
           overlayHidden: document.getElementById('gameover').hidden,
-          feedDisabled: document.getElementById('btn-feed').disabled,
+          trayEmpty: document.querySelectorAll('#item-tray .tray-item').length === 0,
           spriteAnim: getComputedStyle(document.getElementById('pet')).backgroundImage.includes('death'),
         })`);
         await shot("app-gameover.png");
@@ -362,7 +490,7 @@ function maybeRunSmoke() {
         await wait(300);
         report.afterRevive = await js(`({
           overlayHidden: document.getElementById('gameover').hidden,
-          feedDisabled: document.getElementById('btn-feed').disabled,
+          trayRestored: document.querySelectorAll('#item-tray .tray-item').length > 0,
           hpWidth: document.getElementById('fill-hp').style.width,
         })`);
 
@@ -465,37 +593,6 @@ function maybeRunSmoke() {
           text: document.getElementById('task-tag').textContent,
         })`);
         await shot("app-room-taskreveal.png");
-
-        // --- Field Swiper / Shop stub (merged in from the Lee_Mac branch) ---
-        report.swiperBasic = await js(`document.getElementById('swiper-label').textContent`);
-        await js(`document.getElementById('swiper-next').click()`);
-        await wait(150);
-        report.swiperGame = await js(`({
-          label: document.getElementById('swiper-label').textContent,
-          fieldGameClass: document.getElementById('stage').classList.contains('field-game'),
-        })`);
-        await shot("app-room-gamefield.png");
-
-        await js(`document.getElementById('swiper-prev').click()`);
-        await wait(150);
-        report.swiperBackToBasic = await js(
-          `!document.getElementById('stage').classList.contains('field-game')`
-        );
-
-        // A Shop action button lives inside the *currently active* group only.
-        await js(`document.querySelector('.actions-group.active [data-action="shop"]').click()`);
-        await wait(150);
-        report.shopView = await js(`({
-          shopVisible: getComputedStyle(document.getElementById('shop-view')).display !== 'none',
-          stageHidden: getComputedStyle(document.getElementById('stage')).display === 'none',
-        })`);
-        await shot("app-room-shop.png");
-
-        await js(`document.querySelector('.actions-group.active [data-action="field"]').click()`);
-        await wait(150);
-        report.backFromShop = await js(
-          `getComputedStyle(document.getElementById('stage')).display !== 'none'`
-        );
 
         // The "Alarm" action button (not the topbar shortcut) should also reach
         // Pomodoro — this is the real feature now standing in for the old stub.

@@ -165,13 +165,16 @@
       this.lang = lang;
     }
 
-    // Feed reaction: a chomp. Play reaction: a jump or a combo flourish.
+    // Feed reaction: a chomp. Play reaction: a jump or a combo flourish, or a
+    // specific one if `force` is given (e.g. a toy that always does the same trick).
     eat() {
       this.#react("attack1");
     }
-    playful() {
+    playful(force = null) {
       if (this.state === "drag" || this.state === "dead") return;
-      if (Math.random() < 0.5) this.#jump();
+      if (force === "jump") this.#jump();
+      else if (force === "attack2") this.#react("attack2");
+      else if (Math.random() < 0.5) this.#jump();
       else this.#react("attack2");
     }
 
