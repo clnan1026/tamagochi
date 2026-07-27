@@ -28,6 +28,13 @@
       add_task_button: "+ Add Task",
       task_input_placeholder: "What are you working on?",
       tasks_empty: "No tasks yet.",
+      field_basic: "Basic Field",
+      field_game: "Game Field",
+      shop_title: "Shop",
+      under_construction: "Under Construction...",
+      btn_alarm: "⏰ Alarm",
+      btn_shop: "🛒 Shop",
+      btn_field: "🏡 Field",
     },
     ja: {
       start_subtitle: "デスクトップに住む小さな友達",
@@ -52,6 +59,13 @@
       add_task_button: "+ タスク追加",
       task_input_placeholder: "何に取り組みますか？",
       tasks_empty: "タスクはまだありません。",
+      field_basic: "基本フィールド",
+      field_game: "ゲームフィールド",
+      shop_title: "ショップ",
+      under_construction: "工事中...",
+      btn_alarm: "⏰ アラーム",
+      btn_shop: "🛒 ショップ",
+      btn_field: "🏡 フィールド",
     },
     ko: {
       start_subtitle: "데스크톱에 사는 작은 친구",
@@ -76,6 +90,13 @@
       add_task_button: "+ 할 일 추가",
       task_input_placeholder: "무엇을 할까요?",
       tasks_empty: "아직 할 일이 없어요.",
+      field_basic: "일반 필드",
+      field_game: "게임 필드",
+      shop_title: "상점",
+      under_construction: "준비 중...",
+      btn_alarm: "⏰ 알람",
+      btn_shop: "🛒 상점",
+      btn_field: "🏡 필드",
     },
   };
 
@@ -307,9 +328,15 @@
 
   // Opening Pomodoro does NOT stop the room — the pet keeps running underneath
   // (hidden but alive) so stats keep ticking and it can still react to the alarm.
+  // Two entry points share this: the topbar's ⏰ shortcut, and the "Alarm" action
+  // button that appears in the Field Swiper's per-field button groups (this is
+  // the real implementation behind what was a "Under Construction" stub).
   document.getElementById("room-pomodoro").addEventListener("click", () => {
     showScreen("pomodoro");
   });
+  document.querySelectorAll('[data-action="alarm"]').forEach((btn) =>
+    btn.addEventListener("click", () => showScreen("pomodoro"))
+  );
   document.getElementById("pomodoro-back").addEventListener("click", () => {
     showScreen("room");
   });

@@ -58,6 +58,14 @@
   let wasAirborne = false;
   let pushing = false;
   let taskTagTimer = null;
+  let currentScreen = "basic"; // "basic" | "game" | "shop" — Room's own sub-view.
+  // "Alarm" is not one of these: it navigates away to the top-level Pomodoro
+  // screen (see app.js), rather than being an in-room state like Shop is.
+
+  const fieldLabels = {
+    basic: { ko: "일반 필드", ja: "基本フィールド", en: "Basic Field" },
+    game: { ko: "게임 필드", ja: "ゲームフィールド", en: "Game Field" },
+  };
 
   function say(text) {
     els.bubble.textContent = text;
@@ -171,15 +179,20 @@
     const dt = Math.min((now - lastTime) / 1000, MAX_DT);
     lastTime = now;
 
+    // The pet itself (and its rock/dust/bubble/tired-flinch) only exists visually
+    // on the Basic/Game field — not while browsing the Shop stub. Stats keep
+    // ticking regardless, same "background" philosophy as the Pomodoro timer.
+    const petVisible = currentScreen === "basic" || currentScreen === "game";
+
     if (gameOver) {
       // The pet is fainted and locked; only the death-hold frame needs ticking.
-      pet.update(dt);
+      if (petVisible) pet.update(dt);
       renderBars();
       rafId = requestAnimationFrame(frame);
       return;
     }
 
-    pet.update(dt);
+    if (petVisible) pet.update(dt);
     stats.tick(dt);
     if (stats.hp <= 0) {
       enterGameOver();
@@ -188,11 +201,13 @@
       return;
     }
 
-    updateRock(dt);
-    applyBehavior(now);
+    if (petVisible) {
+      updateRock(dt);
+      applyBehavior(now);
+      positionBubble();
+      updateDust(dt);
+    }
     renderBars();
-    positionBubble();
-    updateDust(dt);
 
     rafId = requestAnimationFrame(frame);
   }
@@ -324,6 +339,19 @@
       playBtn: document.getElementById("btn-play"),
       gameover: document.getElementById("gameover"),
       reviveBtn: document.getElementById("btn-revive"),
+
+      // Field swiper + Shop stub (the "Alarm" action opens the top-level Pomodoro
+      // screen instead — wired separately in app.js — so there is no alarmView).
+      swiper: document.getElementById("field-swiper"),
+      swiperLabel: document.getElementById("swiper-label"),
+      swiperPrev: document.getElementById("swiper-prev"),
+      swiperNext: document.getElementById("swiper-next"),
+      shopView: document.getElementById("shop-view"),
+      groups: {
+        basic: document.getElementById("actions-basic"),
+        game: document.getElementById("actions-game"),
+        shop: document.getElementById("actions-shop"),
+      },
     };
 
     const getBounds = () => ({ width: els.stage.clientWidth, height: els.stage.clientHeight });
@@ -343,9 +371,24 @@
       e.preventDefault();
       showCurrentTask();
     });
+
+    els.swiperPrev.addEventListener("click", toggleField);
+    els.swiperNext.addEventListener("click", toggleField);
+    document.querySelector(".actions-container").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === "shop") changeScreen("shop");
+      else if (action === "field") changeScreen("basic");
+      // "alarm" buttons are handled separately in app.js (they open the
+      // top-level Pomodoro screen) — nothing to do here.
+    });
+
     window.addEventListener("resize", () => {
-      pet.onResize();
-      placeRock(rockX); // reclamp into the resized stage
+      if (currentScreen === "basic" || currentScreen === "game") {
+        pet.onResize();
+        placeRock(rockX); // reclamp into the resized stage
+      }
     });
     window.addEventListener("beforeunload", persist);
     document.addEventListener("visibilitychange", () => {
@@ -366,6 +409,38 @@
     els.rock.style.backgroundImage = `url("${chrome.runtime.getURL(`assets/${char}/rock.png`)}")`;
   }
 
+  function changeScreen(screenName) {
+    currentScreen = screenName;
+
+    for (const [name, el] of Object.entries(els.groups)) {
+      el.classList.toggle("active", name === screenName);
+    }
+
+    if (screenName === "basic" || screenName === "game") {
+      els.shopView.style.display = "none";
+      els.stage.style.display = "block";
+      els.swiper.style.display = "flex";
+
+      // Change background theme on stage
+      els.stage.classList.toggle("field-game", screenName === "game");
+
+      // Update Swiper text
+      els.swiperLabel.textContent = fieldLabels[screenName]?.[lang] || fieldLabels[screenName]?.en || "";
+
+      // Re-trigger layout calculations
+      pet.onResize();
+    } else {
+      // screenName === "shop"
+      els.stage.style.display = "none";
+      els.swiper.style.display = "none";
+      els.shopView.style.display = "flex";
+    }
+  }
+
+  function toggleField() {
+    changeScreen(currentScreen === "basic" ? "game" : "basic");
+  }
+
   // Called by the router when entering the room. Layout must be visible first so
   // the stage has real dimensions.
   function start(char, language) {
@@ -373,7 +448,6 @@
     lang = language || "ja";
     applyCharacter(char);
     pet.setLanguage(lang);
-    pet.onResize(); // reclamp to the now-measured stage
     placeRock(0); // left side of the stage to start
 
     loadStats();
@@ -384,6 +458,8 @@
     if (stats.hp <= 0) enterGameOver(); // offline decay already emptied HP
     renderBars();
     pollBattery();
+
+    changeScreen("basic"); // always start in Basic Field; also resizes the pet
 
     running = true;
     lastTime = performance.now();
@@ -403,6 +479,11 @@
   function setLanguage(language) {
     lang = language || "ja";
     if (pet) pet.setLanguage(lang);
+    // Called once at app startup (before the room is ever mounted) to hydrate
+    // the saved language, so `els` may not exist yet.
+    if (els && (currentScreen === "basic" || currentScreen === "game")) {
+      els.swiperLabel.textContent = fieldLabels[currentScreen]?.[lang] || fieldLabels[currentScreen]?.en || "";
+    }
   }
 
   NS.Room = { start, stop, setLanguage, onAlarm };

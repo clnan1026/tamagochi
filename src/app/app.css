@@ -194,10 +194,15 @@ html, body {
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid var(--border-color);
-  background: linear-gradient(#bfe3ff 0%, #dff0ff 62%, #cdeab0 62%, #a9d879 100%);
+  background-image: url("../../assets/bg_basic.jpg");
+  background-size: cover;
+  background-position: center bottom;
+  background-repeat: no-repeat;
 }
 @media (prefers-color-scheme: dark) {
-  .stage { background: linear-gradient(#25324a 0%, #2c3b57 62%, #34424f 62%, #2a3540 100%); }
+  .stage {
+    background-image: linear-gradient(rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.25)), url("../../assets/bg_basic.jpg");
+  }
 }
 .stage .decor { position: absolute; bottom: 6px; font-size: 26px; opacity: 0.85; pointer-events: none; }
 .stage .decor.left { left: 12px; }
@@ -303,8 +308,6 @@ html, body {
   from { transform: translateY(0); opacity: 1; }
   to { transform: translateY(-46px); opacity: 0; }
 }
-
-.actions { display: flex; gap: 10px; }
 
 /* --- pet room: floating "current task" tag (right-click reveal) ------------- */
 .task-tag {
@@ -425,4 +428,105 @@ html, body {
 }
 .task-add:hover { background: var(--bg-hover); }
 .task-add[disabled] { opacity: 0.4; cursor: default; }
-.actions .btn { flex: 1; }
+
+/* --- bottom actions container --- */
+.actions-container {
+  display: flex;
+  width: 100%;
+}
+.actions-group {
+  display: none;
+  width: 100%;
+}
+.actions-group.active {
+  display: flex;
+  gap: 10px;
+}
+.actions-group .btn {
+  flex: 1;
+}
+
+/* --- field swiper slider --- */
+.field-swiper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 6px 14px;
+  margin-bottom: 8px;
+}
+.swiper-label {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-main);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.swiper-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0 8px;
+  transition: color 0.15s, transform 0.1s;
+}
+.swiper-btn:hover {
+  color: var(--accent-color);
+  transform: scale(1.1);
+}
+.swiper-btn:active {
+  transform: scale(0.9);
+}
+
+/* --- cyberpunk game field theme --- */
+.stage.field-game {
+  background-image: url("../../assets/bg_game.png") !important;
+  background-size: cover !important;
+  background-position: center top !important;
+  background-repeat: no-repeat !important;
+}
+.stage.field-game::after {
+  display: none !important;
+}
+.stage.field-game .decor {
+  display: none;
+}
+
+/* --- menu views (shop / alarm) --- */
+.menu-view {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+}
+.menu-view-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.menu-icon {
+  font-size: 48px;
+}
+.menu-title {
+  margin: 4px 0 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+.menu-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}

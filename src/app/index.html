@@ -89,6 +89,14 @@
         </div>
       </div>
 
+      <!-- Field Swiper -->
+      <div class="field-swiper" id="field-swiper">
+        <button class="swiper-btn" id="swiper-prev">‹</button>
+        <span class="swiper-label" id="swiper-label" data-i18n="field_basic">Basic Field</span>
+        <button class="swiper-btn" id="swiper-next">›</button>
+      </div>
+
+      <!-- Center views -->
       <div class="stage" id="stage">
         <span class="decor left">🪴</span>
         <span class="decor right">🧸</span>
@@ -106,9 +114,35 @@
         </div>
       </div>
 
-      <div class="actions">
-        <button id="btn-feed" class="btn" data-i18n="feed_button">🍖 Feed</button>
-        <button id="btn-play" class="btn" data-i18n="play_button">🎮 Play</button>
+      <div class="menu-view" id="shop-view" style="display: none;">
+        <div class="menu-view-content">
+          <span class="menu-icon">🛒</span>
+          <h2 class="menu-title" data-i18n="shop_title">Shop</h2>
+          <p class="menu-desc" data-i18n="under_construction">Under Construction...</p>
+        </div>
+      </div>
+
+      <!-- Bottom action button groups -->
+      <div class="actions-container">
+        <!-- Actions for Basic Field -->
+        <div class="actions-group active" id="actions-basic">
+          <button class="btn btn-alarm" data-action="alarm" data-i18n="btn_alarm">⏰ Alarm</button>
+          <button class="btn btn-shop" data-action="shop" data-i18n="btn_shop">🛒 Shop</button>
+          <button class="btn btn-feed" id="btn-feed" data-i18n="feed_button">🍖 Feed</button>
+        </div>
+
+        <!-- Actions for Game Field -->
+        <div class="actions-group" id="actions-game">
+          <button class="btn btn-alarm" data-action="alarm" data-i18n="btn_alarm">⏰ Alarm</button>
+          <button class="btn btn-shop" data-action="shop" data-i18n="btn_shop">🛒 Shop</button>
+          <button class="btn btn-play" id="btn-play" data-i18n="play_button">🎮 Play</button>
+        </div>
+
+        <!-- Actions for Shop Screen -->
+        <div class="actions-group actions-split-2" id="actions-shop">
+          <button class="btn btn-alarm" data-action="alarm" data-i18n="btn_alarm">⏰ Alarm</button>
+          <button class="btn btn-field" data-action="field" data-i18n="btn_field">🏡 Field</button>
+        </div>
       </div>
     </section>
 

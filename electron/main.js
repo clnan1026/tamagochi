@@ -437,6 +437,46 @@ function maybeRunSmoke() {
           text: document.getElementById('task-tag').textContent,
         })`);
         await shot("app-room-taskreveal.png");
+
+        // --- Field Swiper / Shop stub (merged in from the Lee_Mac branch) ---
+        report.swiperBasic = await js(`document.getElementById('swiper-label').textContent`);
+        await js(`document.getElementById('swiper-next').click()`);
+        await wait(150);
+        report.swiperGame = await js(`({
+          label: document.getElementById('swiper-label').textContent,
+          fieldGameClass: document.getElementById('stage').classList.contains('field-game'),
+        })`);
+        await shot("app-room-gamefield.png");
+
+        await js(`document.getElementById('swiper-prev').click()`);
+        await wait(150);
+        report.swiperBackToBasic = await js(
+          `!document.getElementById('stage').classList.contains('field-game')`
+        );
+
+        // A Shop action button lives inside the *currently active* group only.
+        await js(`document.querySelector('.actions-group.active [data-action="shop"]').click()`);
+        await wait(150);
+        report.shopView = await js(`({
+          shopVisible: getComputedStyle(document.getElementById('shop-view')).display !== 'none',
+          stageHidden: getComputedStyle(document.getElementById('stage')).display === 'none',
+        })`);
+        await shot("app-room-shop.png");
+
+        await js(`document.querySelector('.actions-group.active [data-action="field"]').click()`);
+        await wait(150);
+        report.backFromShop = await js(
+          `getComputedStyle(document.getElementById('stage')).display !== 'none'`
+        );
+
+        // The "Alarm" action button (not the topbar shortcut) should also reach
+        // Pomodoro — this is the real feature now standing in for the old stub.
+        await js(`document.querySelector('.actions-group.active [data-action="alarm"]').click()`);
+        await wait(150);
+        report.alarmActionOpensPomodoro = await js(
+          `document.getElementById('screen-pomodoro').classList.contains('active')`
+        );
+        await js(`document.getElementById('pomodoro-back').click()`);
       } catch (e) {
         errors.push("drive: " + e.message);
       }
