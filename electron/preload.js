@@ -14,4 +14,6 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   getBattery: () => ipcRenderer.invoke("battery:get"),
   onBatteryChanged: (cb) => ipcRenderer.on("battery:changed", () => cb()),
   onDisplayChanged: (cb) => ipcRenderer.on("display:changed", () => cb()),
+  openAlarm: () => ipcRenderer.send("action:openAlarm"),
+  onNavigatePomodoro: (cb) => ipcRenderer.on("navigate:pomodoro", () => cb()),
 });

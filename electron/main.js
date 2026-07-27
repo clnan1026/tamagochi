@@ -238,6 +238,14 @@ ipcMain.on("mouse:setInteractive", (e, interactive) => {
   if (sender && !sender.isDestroyed()) sender.setIgnoreMouseEvents(!interactive, { forward: true });
 });
 
+ipcMain.on("action:openAlarm", () => {
+  if (win && !win.isDestroyed()) {
+    win.show();
+    win.focus();
+    win.webContents.send("navigate:pomodoro");
+  }
+});
+
 // --- lifecycle ---------------------------------------------------------------
 app.whenReady().then(() => {
   loadSettings();
