@@ -37,6 +37,10 @@
       if (changes.character) sprite.setCharacter(changes.character.newValue);
     });
 
+    window.desktopBridge.onDisplayChanged(() => {
+      pet.onResize();
+    });
+
     // --- click-through toggling ------------------------------------------------
     // The window is click-through by default. We make it interactive only while
     // the cursor is over the pet (or it's being dragged), so clicks on empty
