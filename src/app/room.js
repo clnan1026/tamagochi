@@ -60,8 +60,10 @@
 
   // 3 fixed, always-free rooms. "type" drives which bottom panel shows (food tray,
   // ball shelf, mic) and which room the coin/poop spawns are gated to ("field").
-  // Solid colors are the zero-cost default background; a room's optional picture
-  // background (bought in that room's Shop tab) overrides this — see applyRoomVisuals().
+  // Each room's zero-cost default background is `assets/backgrounds/{id}_default.png`;
+  // `bg` is just a solid-color fallback shown behind it (visible only if that file
+  // is ever missing/fails to load). A room's purchased picture background (bought
+  // in that room's Shop tab) overrides the default — see applyRoomVisuals().
   const ROOMS = {
     kitchen: { id: "kitchen", type: "kitchen", bg: "#ffe9c7", names: { en: "Kitchen", ja: "キッチン", ko: "주방" } },
     gameroom: { id: "gameroom", type: "field", bg: "#d6f5ff", names: { en: "Game Room", ja: "ゲームルーム", ko: "게임룸" } },
@@ -84,6 +86,7 @@
     backgrounds: { en: "Backgrounds", ja: "背景", ko: "배경" },
   };
   const DEFAULT_BG_LABEL = { en: "Default", ja: "デフォルト", ko: "기본" };
+  const BACKGROUND_LABEL = { en: "Background", ja: "背景", ko: "배경" };
 
   const pick = (dict, lang) => {
     const list = dict[lang] || dict.ja;
@@ -666,7 +669,7 @@
     list.forEach((item, i) => {
       const isOwned = owned.includes(item.id);
       const isCurrent = current === item.id;
-      const card = shopCardBase("🖼️", `${localize(DEFAULT_BG_LABEL, lang)} ${i + 2}`);
+      const card = shopCardBase("🖼️", `${localize(BACKGROUND_LABEL, lang)} ${i + 1}`);
       if (!isOwned) card.appendChild(priceRow(item.price));
       card.appendChild(
         buyButton(isCurrent, item.price, isOwned ? localize(EQUIP_LABEL, lang) : null, () => {
@@ -733,13 +736,13 @@
 
     const bgId = economy.currentBackgroundId[room.id];
     const bgItem = bgId && (Economy.CATALOG.backgrounds[room.id] || []).find((b) => b.id === bgId);
-    if (bgItem) {
-      els.stage.style.backgroundImage = `url("${chrome.runtime.getURL("assets/" + bgItem.image)}")`;
-      els.stage.style.backgroundColor = "";
-    } else {
-      els.stage.style.backgroundImage = "";
-      els.stage.style.backgroundColor = room.bg;
-    }
+    // No purchased background equipped (or reverted to "Default" in the Shop) →
+    // fall back to that room's own free default picture, not a solid color.
+    const imagePath = bgItem ? bgItem.image : `backgrounds/${room.id}_default.png`;
+    els.stage.style.backgroundImage = `url("${chrome.runtime.getURL("assets/" + imagePath)}")`;
+    // Left set as a base layer behind the image — only visible if the image
+    // above it is ever missing/fails to load.
+    els.stage.style.backgroundColor = room.bg;
 
     els.swiperLabel.textContent = localize(room.names, lang);
     renderBottomPanel();
