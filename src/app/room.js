@@ -4,7 +4,7 @@
 (() => {
   const NS = (window.__tamagotchi ??= {});
 
-  const SCALE = 2.6; // big focal pet: 32 * 2.2 = 70.4px
+  const SCALE = 2.2; // big focal pet: 32 * 2.2 = 70.4px
   const MAX_DT = 0.05;
   const STATS_KEY = "tama-stats";
   const BUBBLE_MS = 1600;
@@ -194,9 +194,9 @@
     const getBounds = () => {
       let offset = 0;
       if (currentScreen === "basic") {
-        offset = 25; // Stand slightly higher in the grass
+        offset = 35; // Stand slightly higher in the grass
       } else if (currentScreen === "game") {
-        offset = 30; // Stand on the platform above the grid
+        offset = 65; // Stand on the platform above the grid
       }
       return {
         width: els.stage.clientWidth,
