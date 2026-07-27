@@ -42,6 +42,12 @@
   let persistTimer = null;
   let tiredAt = 0;
   let bubbleTimer = null;
+  let currentScreen = "basic";
+
+  const fieldLabels = {
+    basic: { ko: "일반 필드", ja: "基本フィールド", en: "Basic Field" },
+    game: { ko: "게임 필드", ja: "ゲームフィールド", en: "Game Field" }
+  };
 
   function say(text) {
     els.bubble.textContent = text;
@@ -128,7 +134,9 @@
     const dt = Math.min((now - lastTime) / 1000, MAX_DT);
     lastTime = now;
 
-    pet.update(dt);
+    if (currentScreen === "basic" || currentScreen === "game") {
+      pet.update(dt);
+    }
     stats.tick(dt);
     applyBehavior(now);
     renderBars();
@@ -167,6 +175,20 @@
       valStamina: document.getElementById("val-stamina"),
       feedBtn: document.getElementById("btn-feed"),
       playBtn: document.getElementById("btn-play"),
+
+      // Swiper & Menu items
+      swiper: document.getElementById("field-swiper"),
+      swiperLabel: document.getElementById("swiper-label"),
+      swiperPrev: document.getElementById("swiper-prev"),
+      swiperNext: document.getElementById("swiper-next"),
+      shopView: document.getElementById("shop-view"),
+      alarmView: document.getElementById("alarm-view"),
+      groups: {
+        basic: document.getElementById("actions-basic"),
+        game: document.getElementById("actions-game"),
+        shop: document.getElementById("actions-shop"),
+        alarm: document.getElementById("actions-alarm"),
+      }
     };
 
     const getBounds = () => ({ width: els.stage.clientWidth, height: els.stage.clientHeight });
@@ -176,7 +198,29 @@
 
     els.feedBtn.addEventListener("click", feed);
     els.playBtn.addEventListener("click", play);
-    window.addEventListener("resize", () => pet.onResize());
+
+    // Wire up navigation controls
+    els.swiperPrev.addEventListener("click", toggleField);
+    els.swiperNext.addEventListener("click", toggleField);
+
+    document.querySelector(".actions-container").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === "alarm") {
+        changeScreen("alarm");
+      } else if (action === "shop") {
+        changeScreen("shop");
+      } else if (action === "field") {
+        changeScreen("basic");
+      }
+    });
+
+    window.addEventListener("resize", () => {
+      if (currentScreen === "basic" || currentScreen === "game") {
+        pet.onResize();
+      }
+    });
     window.addEventListener("beforeunload", persist);
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) persist();
@@ -187,6 +231,41 @@
     });
   }
 
+  function changeScreen(screenName) {
+    currentScreen = screenName;
+
+    // Toggle actions group active visibility
+    for (const [name, el] of Object.entries(els.groups)) {
+      el.classList.toggle("active", name === screenName);
+    }
+
+    // Toggle center views
+    if (screenName === "basic" || screenName === "game") {
+      els.shopView.style.display = "none";
+      els.alarmView.style.display = "none";
+      els.stage.style.display = "block";
+      els.swiper.style.display = "flex";
+
+      // Change background theme on stage
+      els.stage.classList.toggle("field-game", screenName === "game");
+
+      // Update Swiper text
+      els.swiperLabel.textContent = fieldLabels[screenName]?.[lang] || fieldLabels[screenName]?.en || "";
+
+      // Re-trigger layout calculations
+      pet.onResize();
+    } else {
+      els.stage.style.display = "none";
+      els.swiper.style.display = "none";
+      els.shopView.style.display = screenName === "shop" ? "flex" : "none";
+      els.alarmView.style.display = screenName === "alarm" ? "flex" : "none";
+    }
+  }
+
+  function toggleField() {
+    changeScreen(currentScreen === "basic" ? "game" : "basic");
+  }
+
   // Called by the router when entering the room. Layout must be visible first so
   // the stage has real dimensions.
   function start(character, language) {
@@ -194,10 +273,13 @@
     lang = language || "ja";
     sprite.setCharacter(character);
     pet.setLanguage(lang);
-    pet.onResize(); // reclamp to the now-measured stage
+    
     loadStats();
     renderBars();
     pollBattery();
+
+    // Always start in basic field
+    changeScreen("basic");
 
     running = true;
     lastTime = performance.now();
@@ -217,6 +299,9 @@
   function setLanguage(language) {
     lang = language || "ja";
     if (pet) pet.setLanguage(lang);
+    if (currentScreen === "basic" || currentScreen === "game") {
+      els.swiperLabel.textContent = fieldLabels[currentScreen]?.[lang] || fieldLabels[currentScreen]?.en || "";
+    }
   }
 
   NS.Room = { start, stop, setLanguage };
