@@ -13,6 +13,14 @@
     jump: { frames: 8, fps: 12, loop: false },
     hurt: { frames: 4, fps: 8, loop: false },
     climb: { frames: 4, fps: 8, loop: true },
+    attack1: { frames: 4, fps: 12, loop: false }, // feed chomp
+    attack2: { frames: 6, fps: 12, loop: false }, // play combo / flourish
+    death: { frames: 8, fps: 8, loop: false }, // faint (holds last frame)
+    push: { frames: 6, fps: 10, loop: true }, // shoving the rock
+    throw: { frames: 4, fps: 12, loop: false }, // idle flourish
+    walkattack: { frames: 6, fps: 10, loop: true },
+    dust_jump: { frames: 5, fps: 16, loop: false }, // effect
+    dust_run: { frames: 6, fps: 14, loop: true }, // effect
   };
 
   function animationsFor(character) {
