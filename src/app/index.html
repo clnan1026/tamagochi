@@ -97,8 +97,19 @@
 
       <!-- Center views -->
       <div class="stage" id="stage">
+        <span class="decor left">🪴</span>
+        <span class="decor right">🧸</span>
+        <div class="dust" id="dust"></div>
+        <div class="rock" id="rock" title="tap to reset"></div>
         <div class="bubble" id="bubble"></div>
         <div class="pet" id="pet"></div>
+        <div class="gameover" id="gameover" hidden>
+          <div class="gameover-card">
+            <span class="gameover-emoji">💫</span>
+            <p class="gameover-msg" data-i18n="fainted_msg">Your friend fainted…</p>
+            <button id="btn-revive" class="btn" data-i18n="revive_button">Revive</button>
+          </div>
+        </div>
       </div>
 
       <div class="menu-view" id="shop-view" style="display: none;">
