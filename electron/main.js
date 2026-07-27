@@ -52,7 +52,11 @@ function createAppWindow() {
     title: "Tamagotchi",
     webPreferences: sharedWebPreferences(),
   });
-  win.loadFile(path.join(APP_ROOT, "src/app/index.html"));
+  
+  // Clear cache to force reload modified asset images
+  win.webContents.session.clearCache().finally(() => {
+    win.loadFile(path.join(APP_ROOT, "src/app/index.html"));
+  });
 
   // Prevent app from quitting when room window is closed; hide it instead
   win.on("close", (event) => {
