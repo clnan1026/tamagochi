@@ -155,8 +155,8 @@
 
       <div class="mode-tabs">
         <button class="mode-tab active" data-mode="pomodoro" data-i18n="mode_pomodoro">Pomodoro</button>
-        <button class="mode-tab" data-mode="short" data-i18n="mode_short">Short Break</button>
-        <button class="mode-tab" data-mode="long" data-i18n="mode_long">Long Break</button>
+        <button class="mode-tab" data-mode="break" data-i18n="mode_break">Break</button>
+        <button id="duration-edit-btn" class="icon-btn" title="Edit durations">⚙</button>
       </div>
 
       <div class="timer-display" id="timer-display">25:00</div>
@@ -164,6 +164,20 @@
       <div class="timer-actions">
         <button id="timer-reset" class="icon-btn" title="Reset">↺</button>
         <button id="timer-toggle" class="btn" data-i18n="start_timer_button">Start</button>
+      </div>
+
+      <div class="duration-editor" id="duration-editor" hidden>
+        <label class="duration-field">
+          <span data-i18n="mode_pomodoro">Pomodoro</span>
+          <input type="number" id="duration-pomodoro" class="duration-input" min="1" max="180" />
+          <span data-i18n="minutes_unit">min</span>
+        </label>
+        <label class="duration-field">
+          <span data-i18n="mode_break">Break</span>
+          <input type="number" id="duration-break" class="duration-input" min="1" max="180" />
+          <span data-i18n="minutes_unit">min</span>
+        </label>
+        <button id="duration-save" class="btn" data-i18n="save_button">Save</button>
       </div>
 
       <div class="task-section">

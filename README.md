@@ -29,8 +29,10 @@ an idle flourish (a throw or a flex) even when you're not interacting. Everythin
 between launches (with capped offline decay — a long absence can find the pet fainted, not just
 hungry).
 
-The ⏰ button in the room's topbar opens a **Pomodoro timer** (classic 25 / 5 / 15 min) with a
-simple 4-slot **task list** below it. The countdown is wall-clock based and keeps running in the
+The ⏰ button (both the room's topbar and the Field Swiper's Alarm button) opens a **Pomodoro
+timer** — two modes, Pomodoro and Break, each defaulting to 25/5 min but freely editable via the
+⚙ next to the tabs (1–180 min, locked while a session is running) — with a simple 4-slot
+**task list** below it. The countdown is wall-clock based and keeps running in the
 background even if you leave the Pomodoro screen to go play with the pet — when a session ends, a
 5-second synthesized alarm tone plays (Web Audio, no sound file) and the pet reacts wherever you
 are in the app. **Right-click the pet** to reveal your current (first unchecked) task as a tag

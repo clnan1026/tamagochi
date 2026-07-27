@@ -333,7 +333,7 @@ html, body {
 /* --- pomodoro screen ---------------------------------------------------------- */
 #screen-pomodoro { padding: 14px; gap: 18px; align-items: center; }
 
-.mode-tabs { display: flex; gap: 8px; }
+.mode-tabs { display: flex; align-items: center; gap: 8px; }
 .mode-tab {
   font-family: inherit;
   font-size: 13px;
@@ -352,6 +352,8 @@ html, body {
   border-color: var(--accent-color);
   box-shadow: 0 0 10px var(--accent-glow);
 }
+#duration-edit-btn { margin-left: auto; }
+#duration-edit-btn[disabled] { opacity: 0.4; cursor: default; }
 
 .timer-display {
   font-size: 64px;
@@ -362,6 +364,41 @@ html, body {
 
 .timer-actions { display: flex; align-items: center; gap: 10px; }
 .timer-actions .btn { min-width: 140px; }
+
+.duration-editor {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  max-width: 260px;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+}
+.duration-editor[hidden] { display: none; }
+.duration-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.duration-field span:first-child { flex: 1; }
+.duration-field span:last-child { color: var(--text-muted); font-weight: 400; font-size: 12px; }
+.duration-input {
+  width: 56px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-main);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.duration-input:focus { outline: 2px solid var(--accent-color); outline-offset: 1px; }
 
 .task-section { width: 100%; display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
 .task-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }

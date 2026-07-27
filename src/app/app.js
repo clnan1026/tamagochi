@@ -20,10 +20,11 @@
       revive_button: "Revive",
       pomodoro_heading: "Pomodoro",
       mode_pomodoro: "Pomodoro",
-      mode_short: "Short Break",
-      mode_long: "Long Break",
+      mode_break: "Break",
       start_timer_button: "Start",
       pause_timer_button: "Pause",
+      minutes_unit: "min",
+      save_button: "Save",
       tasks_heading: "Tasks",
       add_task_button: "+ Add Task",
       task_input_placeholder: "What are you working on?",
@@ -51,10 +52,11 @@
       revive_button: "元気にする",
       pomodoro_heading: "ポモドーロ",
       mode_pomodoro: "ポモドーロ",
-      mode_short: "小休憩",
-      mode_long: "長休憩",
+      mode_break: "休憩",
       start_timer_button: "スタート",
       pause_timer_button: "一時停止",
+      minutes_unit: "分",
+      save_button: "保存",
       tasks_heading: "タスク",
       add_task_button: "+ タスク追加",
       task_input_placeholder: "何に取り組みますか？",
@@ -82,10 +84,11 @@
       revive_button: "깨우기",
       pomodoro_heading: "뽀모도로",
       mode_pomodoro: "뽀모도로",
-      mode_short: "짧은 휴식",
-      mode_long: "긴 휴식",
+      mode_break: "휴식",
       start_timer_button: "시작",
       pause_timer_button: "일시정지",
+      minutes_unit: "분",
+      save_button: "저장",
       tasks_heading: "할 일",
       add_task_button: "+ 할 일 추가",
       task_input_placeholder: "무엇을 할까요?",
@@ -114,6 +117,10 @@
   const timerDisplay = document.getElementById("timer-display");
   const timerToggle = document.getElementById("timer-toggle");
   const timerReset = document.getElementById("timer-reset");
+  const durationEditBtn = document.getElementById("duration-edit-btn");
+  const durationEditor = document.getElementById("duration-editor");
+  const durationInputs = { pomodoro: document.getElementById("duration-pomodoro"), break: document.getElementById("duration-break") };
+  const durationSaveBtn = document.getElementById("duration-save");
   const taskList = document.getElementById("task-list");
   const taskAddBtn = document.getElementById("task-add");
 
@@ -289,6 +296,31 @@
   function updateTimerButton() {
     timerToggle.textContent =
       translations[lang][pomodoro.running ? "pause_timer_button" : "start_timer_button"];
+    // Editing durations mid-focus is confusing (does it apply now or next time?),
+    // so lock it out while a session is actually running.
+    durationEditBtn.disabled = pomodoro.running;
+    if (pomodoro.running) closeDurationEditor();
+  }
+
+  function openDurationEditor() {
+    if (pomodoro.running) return;
+    durationInputs.pomodoro.value = Math.round(pomodoro.durations.pomodoro / 60);
+    durationInputs.break.value = Math.round(pomodoro.durations.break / 60);
+    durationEditor.hidden = false;
+  }
+
+  function closeDurationEditor() {
+    durationEditor.hidden = true;
+  }
+
+  function saveDurations() {
+    for (const mode of Object.keys(durationInputs)) {
+      const minutes = Number(durationInputs[mode].value);
+      if (Number.isFinite(minutes) && minutes > 0) pomodoro.setDuration(mode, minutes);
+    }
+    persistPomodoro();
+    updateTimerDisplay();
+    closeDurationEditor();
   }
 
   function onPomodoroFinish() {
@@ -369,6 +401,12 @@
     updateTimerButton();
     persistPomodoro();
   });
+
+  durationEditBtn.addEventListener("click", () => {
+    if (durationEditor.hidden) openDurationEditor();
+    else closeDurationEditor();
+  });
+  durationSaveBtn.addEventListener("click", saveDurations);
 
   taskAddBtn.addEventListener("click", () => {
     if (tasks.length >= MAX_TASKS || addingTask) return;

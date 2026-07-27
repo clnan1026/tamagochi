@@ -375,12 +375,40 @@ function maybeRunSmoke() {
         await shot("app-pomodoro.png");
 
         report.timerByMode = {};
-        for (const mode of ["pomodoro", "short", "long"]) {
+        for (const mode of ["pomodoro", "break"]) {
           await js(`document.querySelector('.mode-tab[data-mode="${mode}"]').click()`);
           await wait(50);
           report.timerByMode[mode] = await js(`document.getElementById('timer-display').textContent`);
         }
         await js(`document.querySelector('.mode-tab[data-mode="pomodoro"]').click()`);
+
+        // Custom durations: open the editor, set Pomodoro=10min/Break=3min, save,
+        // and confirm both the display and the OTHER mode's tab pick it up.
+        await js(`document.getElementById('duration-edit-btn').click()`);
+        await wait(50);
+        report.durationEditorOpen = await js(`!document.getElementById('duration-editor').hidden`);
+        await js(`(() => {
+          document.getElementById('duration-pomodoro').value = 10;
+          document.getElementById('duration-break').value = 3;
+        })()`);
+        await js(`document.getElementById('duration-save').click()`);
+        await wait(50);
+        report.afterCustomDuration = {
+          editorClosed: await js(`document.getElementById('duration-editor').hidden`),
+          pomodoro: await js(`document.getElementById('timer-display').textContent`),
+        };
+        await js(`document.querySelector('.mode-tab[data-mode="break"]').click()`);
+        await wait(50);
+        report.customBreakDisplay = await js(`document.getElementById('timer-display').textContent`);
+
+        // The editor should be locked out while a session is actually running.
+        await js(`document.querySelector('.mode-tab[data-mode="pomodoro"]').click()`);
+        await js(`document.getElementById('timer-toggle').click()`); // Start
+        await wait(50);
+        report.editLockedWhileRunning = await js(`document.getElementById('duration-edit-btn').disabled`);
+        await js(`document.getElementById('timer-toggle').click()`); // Pause again
+        await wait(50);
+        await js(`document.getElementById('timer-reset').click()`); // back to a clean idle state
 
         // Add tasks up to the 4-slot cap.
         for (const text of ["Write the report", "Review PR", "Reply to emails", "Plan tomorrow"]) {
