@@ -29,6 +29,14 @@
     ja: ["ねむい… 😴", "おなかすいた…", "つかれた…"],
     ko: ["졸려... 😴", "배고파...", "힘이 없어..."],
   };
+  const ALARM_PHRASES = {
+    en: ["⏰ Time's up!", "⏰ Break time!", "⏰ Ding ding ding!"],
+    ja: ["⏰ 時間だよ！", "⏰ 休憩の時間！", "⏰ ピピピ！"],
+    ko: ["⏰ 시간 다 됐어요!", "⏰ 쉬는 시간!", "⏰ 삐삐삐!"],
+  };
+  const TASK_EMPTY = { en: "No tasks 🎉", ja: "タスクなし 🎉", ko: "할 일 없음 🎉" };
+  const TASKS_KEY = "tama-tasks"; // owned/written by app.js's Pomodoro screen; read fresh here
+  const TASK_TAG_MS = 3000;
 
   const pick = (dict, lang) => {
     const list = dict[lang] || dict.ja;
@@ -49,6 +57,7 @@
   let rockX = 0; // px from the stage's left edge
   let wasAirborne = false;
   let pushing = false;
+  let taskTagTimer = null;
 
   function say(text) {
     els.bubble.textContent = text;
@@ -127,6 +136,33 @@
     const x = pet.x + sprite.size / 2;
     const y = pet.y - 6;
     els.bubble.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -100%)`;
+    // Slightly higher than the bubble so the two stack instead of overlapping if
+    // both happen to be visible at once (e.g. right-click right after a feed).
+    els.taskTag.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -140%)`;
+  }
+
+  // --- right-click: reveal the current (first unchecked) task -----------------
+  function showCurrentTask() {
+    if (gameOver) return;
+    let list = [];
+    try {
+      list = JSON.parse(localStorage.getItem(TASKS_KEY)) || [];
+    } catch {
+      list = [];
+    }
+    const current = list.find((t) => !t.done);
+    els.taskTag.textContent = current ? current.text : TASK_EMPTY[lang] || TASK_EMPTY.ja;
+    els.taskTag.classList.add("visible");
+    clearTimeout(taskTagTimer);
+    taskTagTimer = setTimeout(() => els.taskTag.classList.remove("visible"), TASK_TAG_MS);
+  }
+
+  // Called by app.js's Pomodoro driver when a session finishes — fires wherever
+  // the app is, but the pet only visually reacts if the room is mounted/running.
+  function onAlarm() {
+    if (!els || !pet || gameOver) return;
+    pet.playful(); // physical reaction only (no built-in phrase, unlike poke())
+    say(pick(ALARM_PHRASES, lang));
   }
 
   function frame(nowMs) {
@@ -277,6 +313,7 @@
       dust: document.getElementById("dust"),
       rock: document.getElementById("rock"),
       bubble: document.getElementById("bubble"),
+      taskTag: document.getElementById("task-tag"),
       fillHp: document.getElementById("fill-hp"),
       fillSatiety: document.getElementById("fill-satiety"),
       fillStamina: document.getElementById("fill-stamina"),
@@ -299,6 +336,13 @@
     els.playBtn.addEventListener("click", play);
     els.reviveBtn.addEventListener("click", revive);
     els.rock.addEventListener("click", () => placeRock(els.stage.clientWidth * 0.7));
+    // Additive: input.js already preventDefault()s the native menu on the pet for
+    // all three hosts. This listener is room-only, so the extension/overlay are
+    // untouched by the task-reveal feature.
+    els.petEl.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      showCurrentTask();
+    });
     window.addEventListener("resize", () => {
       pet.onResize();
       placeRock(rockX); // reclamp into the resized stage
@@ -361,5 +405,5 @@
     if (pet) pet.setLanguage(lang);
   }
 
-  NS.Room = { start, stop, setLanguage };
+  NS.Room = { start, stop, setLanguage, onAlarm };
 })();

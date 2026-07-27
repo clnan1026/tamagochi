@@ -68,6 +68,7 @@
       <div class="room-topbar">
         <button id="room-back" class="icon-btn" title="Change character">‹</button>
         <span class="pet-name" id="room-pet-name">Pinky</span>
+        <button id="room-pomodoro" class="icon-btn" title="Pomodoro">⏰</button>
       </div>
 
       <div class="stats">
@@ -94,6 +95,7 @@
         <div class="dust" id="dust"></div>
         <div class="rock" id="rock" title="tap to reset"></div>
         <div class="bubble" id="bubble"></div>
+        <div class="task-tag" id="task-tag"></div>
         <div class="pet" id="pet"></div>
         <div class="gameover" id="gameover" hidden>
           <div class="gameover-card">
@@ -110,12 +112,41 @@
       </div>
     </section>
 
+    <!-- 4. Pomodoro -->
+    <section id="screen-pomodoro" class="screen">
+      <div class="room-topbar">
+        <button id="pomodoro-back" class="icon-btn" title="Back">‹</button>
+        <span class="pet-name" data-i18n="pomodoro_heading">Pomodoro</span>
+      </div>
+
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="pomodoro" data-i18n="mode_pomodoro">Pomodoro</button>
+        <button class="mode-tab" data-mode="short" data-i18n="mode_short">Short Break</button>
+        <button class="mode-tab" data-mode="long" data-i18n="mode_long">Long Break</button>
+      </div>
+
+      <div class="timer-display" id="timer-display">25:00</div>
+
+      <div class="timer-actions">
+        <button id="timer-reset" class="icon-btn" title="Reset">↺</button>
+        <button id="timer-toggle" class="btn" data-i18n="start_timer_button">Start</button>
+      </div>
+
+      <div class="task-section">
+        <h2 class="section-title" data-i18n="tasks_heading">Tasks</h2>
+        <div class="task-list" id="task-list"></div>
+        <button id="task-add" class="task-add" data-i18n="add_task_button">+ Add Task</button>
+      </div>
+    </section>
+
     <!-- shared pet engine + app -->
     <script src="../desktop/chrome-shim.js"></script>
     <script src="../content/sprite.js"></script>
     <script src="../content/pet.js"></script>
     <script src="../content/input.js"></script>
     <script src="stats.js"></script>
+    <script src="pomodoro.js"></script>
+    <script src="alarm.js"></script>
     <script src="room.js"></script>
     <script src="app.js"></script>
   </body>

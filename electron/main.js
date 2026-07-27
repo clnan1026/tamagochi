@@ -365,6 +365,78 @@ function maybeRunSmoke() {
           feedDisabled: document.getElementById('btn-feed').disabled,
           hpWidth: document.getElementById('fill-hp').style.width,
         })`);
+
+        // --- Pomodoro screen: navigate, tabs, task cap, alarm wiring, right-click ---
+        await js(`document.getElementById('room-pomodoro').click()`);
+        await wait(200);
+        report.pomodoroScreenActive = await js(
+          `document.getElementById('screen-pomodoro').classList.contains('active')`
+        );
+        await shot("app-pomodoro.png");
+
+        report.timerByMode = {};
+        for (const mode of ["pomodoro", "short", "long"]) {
+          await js(`document.querySelector('.mode-tab[data-mode="${mode}"]').click()`);
+          await wait(50);
+          report.timerByMode[mode] = await js(`document.getElementById('timer-display').textContent`);
+        }
+        await js(`document.querySelector('.mode-tab[data-mode="pomodoro"]').click()`);
+
+        // Add tasks up to the 4-slot cap.
+        for (const text of ["Write the report", "Review PR", "Reply to emails", "Plan tomorrow"]) {
+          await js(`document.getElementById('task-add').click()`);
+          await js(`(() => {
+            const input = document.querySelector('.task-input');
+            input.value = ${JSON.stringify(text)};
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+          })()`);
+          await wait(50);
+        }
+        report.taskCountAt4 = await js(`document.querySelectorAll('.task-row').length`);
+        report.addDisabledAt4 = await js(`document.getElementById('task-add').disabled`);
+        await js(`document.getElementById('task-add').click()`); // should no-op: already at cap
+        await wait(50);
+        report.taskCountAfterAttempted5th = await js(`document.querySelectorAll('.task-row').length`);
+        await shot("app-pomodoro-tasks.png");
+
+        // Check the first task off — the right-click reveal below should then
+        // skip it and show the second (first *unchecked*) task instead.
+        await js(`document.querySelector('.task-checkbox').click()`);
+        await wait(50);
+        report.firstTaskDone = await js(`document.querySelector('.task-row').classList.contains('done')`);
+
+        await js(`document.getElementById('pomodoro-back').click()`); // → Room, pet still mounted
+        await wait(200);
+
+        // Exercise the exact real functions app.js calls when a session finishes.
+        // The countdown timing itself is proven deterministically & headlessly in
+        // pomodoro-test.js; this proves the DOM/audio wiring doesn't throw and the
+        // pet actually reacts.
+        let alarmErr = null;
+        try {
+          await js(`window.__tamagotchi.playAlarm(); window.__tamagotchi.Room.onAlarm();`);
+        } catch (e) {
+          alarmErr = e.message;
+        }
+        report.alarmWiringError = alarmErr;
+        await wait(150);
+        report.bubbleAfterAlarm = await js(`({
+          visible: document.getElementById('bubble').classList.contains('visible'),
+          text: document.getElementById('bubble').textContent,
+        })`);
+
+        // Right-click the pet → the task-tag should show the first *unchecked* task.
+        const petRect2 = await js(`(() => { const r = document.getElementById('pet').getBoundingClientRect();
+          return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
+        for (const type of ["mouseMove", "mouseDown", "mouseUp"]) {
+          wc.sendInputEvent({ type, x: petRect2.x, y: petRect2.y, button: "right", clickCount: 1 });
+        }
+        await wait(150);
+        report.taskTag = await js(`({
+          visible: document.getElementById('task-tag').classList.contains('visible'),
+          text: document.getElementById('task-tag').textContent,
+        })`);
+        await shot("app-room-taskreveal.png");
       } catch (e) {
         errors.push("drive: " + e.message);
       }

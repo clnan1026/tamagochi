@@ -12,8 +12,8 @@ npm install
 npm start
 ```
 
-Opens a portrait app window with a three-screen flow: **Start → Choose your friend →
-Pet Room**. In the room the pet idles and roams, and you look after three stats:
+Opens a portrait app window with a four-screen flow: **Start → Choose your friend →
+Pet Room ⇄ Pomodoro**. In the room the pet idles and roams, and you look after three stats:
 
 - **HP ❤️** — full to start; only drops once Satiety hits 0, and slowly recovers once the pet
   is fed again. Reaching 0 faints the pet (a real game over) until you hit **Revive**.
@@ -28,6 +28,13 @@ an idle flourish (a throw or a flex) even when you're not interacting. Everythin
 (EN/JP/KO); the menu-bar tray has live battery %, character, language, and Quit. Stats persist
 between launches (with capped offline decay — a long absence can find the pet fainted, not just
 hungry).
+
+The ⏰ button in the room's topbar opens a **Pomodoro timer** (classic 25 / 5 / 15 min) with a
+simple 4-slot **task list** below it. The countdown is wall-clock based and keeps running in the
+background even if you leave the Pomodoro screen to go play with the pet — when a session ends, a
+5-second synthesized alarm tone plays (Web Audio, no sound file) and the pet reacts wherever you
+are in the app. **Right-click the pet** to reveal your current (first unchecked) task as a tag
+near it.
 
 > If `npm start` exits instantly with `app.getAppPath is undefined`, the shell has
 > `ELECTRON_RUN_AS_NODE` set, which makes Electron run as plain Node. Launch with
@@ -53,13 +60,15 @@ src/content/           shared pet engine — identical across all three hosts
                         poke/eat/playful/die/revive + idle personality flourishes
   input.js             poke vs. drag, throw velocity
 
-src/app/               desktop APP (primary): Start → Select → Pet Room
-  index.html           the three screens
-  app.css              design tokens (OS light/dark) + screens/stat bars/room
-  app.js               screen router + Start/Select + language
+src/app/               desktop APP (primary): Start → Select → Pet Room ⇄ Pomodoro
+  index.html           the four screens
+  app.css              design tokens (OS light/dark) + screens/stat bars/room/pomodoro
+  app.js               screen router + Start/Select + language + Pomodoro driver + tasks
   stats.js             HP / Satiety / Stamina model (+ offline decay, persistence, revive)
   room.js              Pet Room controller: feed/play/poke, game-over/revive, rock + dust
-                        effects, battery→stamina, behavior
+                        effects, battery→stamina, behavior, alarm reaction, task reveal
+  pomodoro.js          PomodoroTimer model (wall-clock based; survives background tabs)
+  alarm.js             synthesized 5s Web Audio alarm tone — no sound asset needed
 
 electron/
   main.js              opens the app window + overlay; tray; battery (pmset); settings
@@ -83,8 +92,12 @@ those files touch (`chrome.runtime.getURL`, `chrome.storage`) are provided by
 three hosts. `pet.js` takes an optional `getBounds` so the app's Pet Room confines the pet to
 the room stage while the overlay/extension default to the full window.
 
-The stat model ([stats.js](src/app/stats.js)) is host-agnostic plain JS (no DOM/chrome/Electron),
-so its rules are unit-tested headlessly.
+The stat model ([stats.js](src/app/stats.js)) and the Pomodoro model
+([pomodoro.js](src/app/pomodoro.js)) are both host-agnostic plain JS (no DOM/chrome/Electron), so
+their rules are unit-tested headlessly. Tasks (`tama-tasks` in `localStorage`) are read directly
+by both `app.js` (the Pomodoro screen's list) and `room.js` (the right-click reveal) — no shared
+module between them, just the same storage key, kept simple since neither needs the other's
+in-memory state.
 
 ## Assets
 
