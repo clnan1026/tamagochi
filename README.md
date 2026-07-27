@@ -16,22 +16,25 @@ Opens a portrait app window with a three-screen flow: **Start → Choose your fr
 Pet Room**. In the room the pet idles and roams, and you look after three stats:
 
 - **HP ❤️** — full to start; only drops once Satiety hits 0, and slowly recovers once the pet
-  is fed again.
-- **Satiety 🍖** — drains over time; **Feed** refills it.
+  is fed again. Reaching 0 faints the pet (a real game over) until you hit **Revive**.
+- **Satiety 🍖** — drains over time; **Feed** refills it (and plays a chomp).
 - **Stamina 🔋** — mirrors your **real laptop battery** (native `pmset` read). Low battery makes
   the pet sluggish and, when very low, tired/grumpy — the one thing a web pet can't do.
 
-**Feed** and **Play** buttons react (a happy hop + a speech bubble); **tap the pet** to poke it;
-drag/flick to toss it around the room. Everything is localized (EN/JP/KO); the menu-bar tray has
-live battery %, character, language, and Quit. Stats persist between launches (with capped
-offline decay, so you don't return to a dead pet).
+**Feed** chomps (`attack1`), **Play** jumps or does a combo flourish (`attack2`) — both with a
+speech bubble and a floating emoji. **Tap the pet** to poke it; drag/flick to toss it around the
+room; it also pushes a **rock** prop around the floor while wandering, and occasionally busts out
+an idle flourish (a throw or a flex) even when you're not interacting. Everything is localized
+(EN/JP/KO); the menu-bar tray has live battery %, character, language, and Quit. Stats persist
+between launches (with capped offline decay — a long absence can find the pet fainted, not just
+hungry).
 
 > If `npm start` exits instantly with `app.getAppPath is undefined`, the shell has
 > `ELECTRON_RUN_AS_NODE` set, which makes Electron run as plain Node. Launch with
 > `env -u ELECTRON_RUN_AS_NODE npm start`.
 
-The transparent **desktop-overlay** mode (`src/desktop/`) is still in the tree for a future
-"release to desktop" button; it is not opened on launch.
+The transparent **desktop-overlay** mode (`src/desktop/`) opens alongside the app window — a
+click-through pet roaming the whole screen, sharing the same engine and assets.
 
 ## Run it — Chrome extension
 
@@ -45,19 +48,21 @@ Open any page and the pet appears in the bottom-left. Same interactions as above
 
 ```
 src/content/           shared pet engine — identical across all three hosts
-  sprite.js            sheet loading + frame stepping
-  pet.js               state machine (idle/walk/run/air/drag/hurt) + physics + poke/hop
+  sprite.js            sheet loading + frame stepping (15 animations per character)
+  pet.js               state machine (idle/walk/run/air/drag/hurt/react/dead) + physics +
+                        poke/eat/playful/die/revive + idle personality flourishes
   input.js             poke vs. drag, throw velocity
 
 src/app/               desktop APP (primary): Start → Select → Pet Room
   index.html           the three screens
   app.css              design tokens (OS light/dark) + screens/stat bars/room
   app.js               screen router + Start/Select + language
-  stats.js             HP / Satiety / Stamina model (+ offline decay, persistence)
-  room.js              Pet Room controller: feed/play/poke, battery→stamina, behavior
+  stats.js             HP / Satiety / Stamina model (+ offline decay, persistence, revive)
+  room.js              Pet Room controller: feed/play/poke, game-over/revive, rock + dust
+                        effects, battery→stamina, behavior
 
 electron/
-  main.js              opens the app window; tray; battery (pmset); settings; overlay (later)
+  main.js              opens the app window + overlay; tray; battery (pmset); settings
   preload.js           contextBridge: assets, settings, battery, interactivity
 
 src/desktop/           desktop OVERLAY (secondary): transparent click-through pet
@@ -68,7 +73,8 @@ src/options/           Chrome extension options page (character/language)
 manifest.json          Chrome extension (MV3, content script on <all_urls>)
 overlay.js (in src/content) — extension host overlay
 
-assets/<character>/    pink | owlet | dude — idle, walk, run, jump, hurt, climb
+assets/<character>/    pink | owlet | dude — idle, walk, run, jump, hurt, climb, attack1,
+                        attack2, death, push, throw, walkattack, dust_jump, dust_run, rock
 ```
 
 All three hosts reuse `sprite.js` / `pet.js` / `input.js` verbatim; the only extension APIs
@@ -82,8 +88,9 @@ so its rules are unit-tested headlessly.
 
 ## Assets
 
-Sprites are from a [CraftPix](https://craftpix.net/file-licenses/) pack, kept unmodified in
-`tamagotchi-pixel-character/` and copied into `assets/`. **The license permits use but
-forbids redistributing the assets themselves** — read it before making this repo public or
-publishing to the Chrome Web Store. `PSD/`, `COUPON.*`, and the bundled font are not shipped
-with the extension.
+Sprites are from a [CraftPix](https://craftpix.net/file-licenses/) pack, normalized into a single
+lowercase set per character under `assets/<character>/` (no CamelCase duplicates — the original
+pack shipped both the raw sheets and pre-renamed copies of the same 6 base animations; only one
+copy of each is kept). **The license permits use but forbids redistributing the assets
+themselves** — read it before making this repo public or publishing to the Chrome Web Store.
+`PSD/`, `COUPON.*`, and the bundled font are not shipped with the extension.

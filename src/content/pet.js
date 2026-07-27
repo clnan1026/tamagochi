@@ -165,13 +165,6 @@
       this.lang = lang;
     }
 
-    // A happy hop, used by the pet room for Feed/Play reactions. Only fires from
-    // the ground so it can't interrupt a drag or an in-progress jump.
-    hop() {
-      if (this.state === "drag" || this.state === "air" || this.state === "hurt") return;
-      this.#jump();
-    }
-
     // Feed reaction: a chomp. Play reaction: a jump or a combo flourish.
     eat() {
       this.#react("attack1");
@@ -212,6 +205,7 @@
     }
 
     grab() {
+      if (this.state === "dead") return; // fainted pets lie still until revive()
       this.state = "drag";
       this.vx = 0;
       this.vy = 0;
@@ -219,6 +213,9 @@
     }
 
     dragTo(x, y, dx) {
+      // input.js tracks dragging independent of pet.state; if grab() refused
+      // (e.g. the pet fainted mid-drag) there's nothing to move.
+      if (this.state !== "drag") return;
       this.x = Math.min(Math.max(x, 0), this.maxX());
       this.y = Math.min(Math.max(y, 0), this.groundY());
       if (Math.abs(dx) > 0.5) this.sprite.face(dx);
@@ -226,6 +223,7 @@
 
     // `vx`/`vy` are the pointer's recent velocity, so a flick throws the pet.
     release(vx, vy) {
+      if (this.state !== "drag") return; // same rationale as dragTo()
       this.state = "air";
       this.vx = vx * THROW_DAMPING;
       this.vy = vy * THROW_DAMPING;

@@ -325,6 +325,46 @@ function maybeRunSmoke() {
         await wait(200);
         report.pokeBubble = await js(`({ visible: document.getElementById('bubble').classList.contains('visible'),
           text: document.getElementById('bubble').textContent })`);
+
+        // The rock: present, positioned at the stage's left edge (placeRock(0) on
+        // room start), and pointed at the current character's rock.png.
+        report.rock = await js(`(() => {
+          const r = document.getElementById('rock');
+          const cs = getComputedStyle(r);
+          return { bg: cs.backgroundImage, transform: cs.transform };
+        })()`);
+
+        // Feed once more so eat() (attack1) is exercised distinctly from the
+        // earlier hop-era check, then sample mid-animation frames.
+        await js(`document.getElementById('btn-feed').click()`);
+        report.eatFrames = [];
+        for (let i = 0; i < 4; i++) {
+          await wait(60);
+          report.eatFrames.push(await js(`getComputedStyle(document.getElementById('pet')).backgroundPosition`));
+        }
+
+        // Death + revive: re-enter the room with HP already at 0 (the offline-decay
+        // dead-on-load path) and confirm the game-over overlay + death pose appear.
+        await js(`document.getElementById('room-back').click()`); // → back to Select
+        await wait(150);
+        await js(`localStorage.setItem('tama-stats', JSON.stringify({ hp: 0, satiety: 0, lastSeen: Date.now() }))`);
+        await js(`document.querySelector('.char-card[data-char="pink"]').click();
+                  document.getElementById('select-confirm').click()`);
+        await wait(400);
+        report.gameOverOnLoad = await js(`({
+          overlayHidden: document.getElementById('gameover').hidden,
+          feedDisabled: document.getElementById('btn-feed').disabled,
+          spriteAnim: getComputedStyle(document.getElementById('pet')).backgroundImage.includes('death'),
+        })`);
+        await shot("app-gameover.png");
+
+        await js(`document.getElementById('btn-revive').click()`);
+        await wait(300);
+        report.afterRevive = await js(`({
+          overlayHidden: document.getElementById('gameover').hidden,
+          feedDisabled: document.getElementById('btn-feed').disabled,
+          hpWidth: document.getElementById('fill-hp').style.width,
+        })`);
       } catch (e) {
         errors.push("drive: " + e.message);
       }

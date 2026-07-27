@@ -16,6 +16,8 @@
       confirm_button: "Let's play",
       feed_button: "🍖 Feed",
       play_button: "🎮 Play",
+      fainted_msg: "Your friend fainted…",
+      revive_button: "Revive",
     },
     ja: {
       start_subtitle: "デスクトップに住む小さな友達",
@@ -28,6 +30,8 @@
       confirm_button: "遊ぶ！",
       feed_button: "🍖 ごはん",
       play_button: "🎮 あそぶ",
+      fainted_msg: "お友達が倒れちゃった…",
+      revive_button: "元気にする",
     },
     ko: {
       start_subtitle: "데스크톱에 사는 작은 친구",
@@ -40,6 +44,8 @@
       confirm_button: "놀기!",
       feed_button: "🍖 먹이",
       play_button: "🎮 놀기",
+      fainted_msg: "친구가 기절했어요…",
+      revive_button: "깨우기",
     },
   };
 

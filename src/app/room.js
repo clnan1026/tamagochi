@@ -11,6 +11,8 @@
   const BATTERY_POLL_MS = 30_000;
   const PERSIST_MS = 5_000;
   const TIRED_COOLDOWN_MS = 7_000;
+  const ROCK_WIDTH = 48; // 16px sheet * 3
+  const PUSH_REACH = 14; // px of overlap before the pet starts pushing
 
   const FEED_PHRASES = {
     en: ["Yum! 😋", "So good!", "More please~", "Nom nom"],
@@ -33,15 +35,20 @@
     return list[Math.floor(Math.random() * list.length)];
   };
 
-  let els, sprite, pet, stats;
+  let els, sprite, pet, stats, dustSprite;
   let lang = "ja";
+  let character = "pink";
   let running = false;
+  let gameOver = false;
   let rafId = null;
   let lastTime = 0;
   let batteryTimer = null;
   let persistTimer = null;
   let tiredAt = 0;
   let bubbleTimer = null;
+  let rockX = 0; // px from the stage's left edge
+  let wasAirborne = false;
+  let pushing = false;
 
   function say(text) {
     els.bubble.textContent = text;
@@ -128,29 +135,138 @@
     const dt = Math.min((now - lastTime) / 1000, MAX_DT);
     lastTime = now;
 
+    if (gameOver) {
+      // The pet is fainted and locked; only the death-hold frame needs ticking.
+      pet.update(dt);
+      renderBars();
+      rafId = requestAnimationFrame(frame);
+      return;
+    }
+
     pet.update(dt);
     stats.tick(dt);
+    if (stats.hp <= 0) {
+      enterGameOver();
+      renderBars();
+      rafId = requestAnimationFrame(frame);
+      return;
+    }
+
+    updateRock(dt);
     applyBehavior(now);
     renderBars();
     positionBubble();
+    updateDust(dt);
 
     rafId = requestAnimationFrame(frame);
   }
 
   function feed() {
+    if (gameOver) return;
     stats.feed();
-    pet.hop();
+    pet.eat();
     spawnFx("🍖");
     say(pick(FEED_PHRASES, lang));
     renderBars();
   }
 
   function play() {
+    if (gameOver) return;
     stats.play();
-    pet.hop();
+    pet.playful();
     spawnFx("🎉");
     say(pick(PLAY_PHRASES, lang));
     renderBars();
+  }
+
+  // --- game over / revive ------------------------------------------------------
+  function enterGameOver() {
+    if (gameOver) return;
+    gameOver = true;
+    pet.die();
+    els.feedBtn.disabled = true;
+    els.playBtn.disabled = true;
+    els.gameover.hidden = false;
+    clearTimeout(bubbleTimer);
+    els.bubble.classList.remove("visible"); // don't leave a stray bubble under the modal
+  }
+
+  function revive() {
+    if (!gameOver) return;
+    stats.reset();
+    pet.revive();
+    gameOver = false;
+    els.feedBtn.disabled = false;
+    els.playBtn.disabled = false;
+    els.gameover.hidden = true;
+    renderBars();
+    persist();
+  }
+
+  // --- dust: a second sprite layered on the pet, driven by its state ----------
+  function updateDust(dt) {
+    const el = els.dust;
+    el.style.transform = `translate3d(${pet.x}px, ${pet.y}px, 0)`;
+
+    const justLeftGround = !wasAirborne && pet.state === "air";
+    wasAirborne = pet.state === "air";
+
+    if (justLeftGround) {
+      el.classList.add("visible");
+      dustSprite.play("dust_jump", () => el.classList.remove("visible"), true);
+    } else if (pet.state === "run" || pushing) {
+      el.classList.add("visible");
+      dustSprite.play("dust_run");
+    } else if (dustSprite.name !== "dust_jump") {
+      el.classList.remove("visible");
+    }
+
+    if (el.classList.contains("visible")) dustSprite.tick(dt);
+  }
+
+  // --- rock: a prop the walking/running pet pushes -----------------------------
+  function rockMax() {
+    return Math.max(0, els.stage.clientWidth - ROCK_WIDTH);
+  }
+
+  function placeRock(x) {
+    rockX = Math.min(Math.max(x, 0), rockMax());
+    els.rock.style.transform = `translate3d(${rockX}px, 0, 0)`;
+  }
+
+  function updateRock(dt) {
+    const grounded = pet.state === "walk" || pet.state === "run";
+    const stopPushing = () => {
+      if (!pushing) return;
+      pushing = false;
+      // Pet.update() only calls sprite.play() on a *state* transition, and "push" is
+      // a purely visual override here — restore the animation that matches pet.state
+      // or it would be stuck showing "push" while still walking/running.
+      if (grounded) sprite.play(pet.state);
+    };
+
+    if (!grounded) return stopPushing();
+
+    const petCenter = pet.x + sprite.size / 2;
+    const rockCenter = rockX + ROCK_WIDTH / 2;
+    const touching = Math.abs(petCenter - rockCenter) < sprite.size / 2 + ROCK_WIDTH / 2 - PUSH_REACH;
+    const movingToward = (pet.targetX - pet.x) * (rockCenter - petCenter) > 0;
+
+    if (!touching || !movingToward) return stopPushing();
+
+    pushing = true;
+    const dir = petCenter < rockCenter ? 1 : -1;
+    const speed = pet.state === "run" ? 150 : 60; // matches pet.js RUN_SPEED / WALK_SPEED
+    const before = rockX;
+    placeRock(rockX + dir * speed * dt);
+    sprite.play("push");
+    sprite.face(dir);
+
+    if (rockX === before && (rockX <= 0 || rockX >= rockMax())) {
+      // Pinned against a wall — send the pet the other way so it doesn't idle-push forever.
+      pet.targetX = dir > 0 ? 0 : pet.maxX();
+      stopPushing();
+    }
   }
 
   function mount() {
@@ -158,6 +274,8 @@
     els = {
       stage: document.getElementById("stage"),
       petEl: document.getElementById("pet"),
+      dust: document.getElementById("dust"),
+      rock: document.getElementById("rock"),
       bubble: document.getElementById("bubble"),
       fillHp: document.getElementById("fill-hp"),
       fillSatiety: document.getElementById("fill-satiety"),
@@ -167,16 +285,24 @@
       valStamina: document.getElementById("val-stamina"),
       feedBtn: document.getElementById("btn-feed"),
       playBtn: document.getElementById("btn-play"),
+      gameover: document.getElementById("gameover"),
+      reviveBtn: document.getElementById("btn-revive"),
     };
 
     const getBounds = () => ({ width: els.stage.clientWidth, height: els.stage.clientHeight });
-    sprite = new NS.Sprite(els.petEl, "pink", SCALE);
+    sprite = new NS.Sprite(els.petEl, character, SCALE);
     pet = new NS.Pet(sprite, { say, getBounds });
     NS.attachInput(els.petEl, pet); // poke / drag / throw
+    dustSprite = new NS.Sprite(els.dust, character, SCALE);
 
     els.feedBtn.addEventListener("click", feed);
     els.playBtn.addEventListener("click", play);
-    window.addEventListener("resize", () => pet.onResize());
+    els.reviveBtn.addEventListener("click", revive);
+    els.rock.addEventListener("click", () => placeRock(els.stage.clientWidth * 0.7));
+    window.addEventListener("resize", () => {
+      pet.onResize();
+      placeRock(rockX); // reclamp into the resized stage
+    });
     window.addEventListener("beforeunload", persist);
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) persist();
@@ -187,15 +313,31 @@
     });
   }
 
+  // Character art (idle preview, rock, dust) is per-character, so the room's
+  // decorative sprites need to be repointed whenever the chosen friend changes.
+  function applyCharacter(char) {
+    character = char;
+    sprite.setCharacter(char);
+    dustSprite.setCharacter(char);
+    els.rock.style.backgroundImage = `url("${chrome.runtime.getURL(`assets/${char}/rock.png`)}")`;
+  }
+
   // Called by the router when entering the room. Layout must be visible first so
   // the stage has real dimensions.
-  function start(character, language) {
+  function start(char, language) {
     mount();
     lang = language || "ja";
-    sprite.setCharacter(character);
+    applyCharacter(char);
     pet.setLanguage(lang);
     pet.onResize(); // reclamp to the now-measured stage
+    placeRock(0); // left side of the stage to start
+
     loadStats();
+    gameOver = false;
+    els.gameover.hidden = true;
+    els.feedBtn.disabled = false;
+    els.playBtn.disabled = false;
+    if (stats.hp <= 0) enterGameOver(); // offline decay already emptied HP
     renderBars();
     pollBattery();
 
