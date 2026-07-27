@@ -10,6 +10,7 @@ const LANGUAGES = [["ja", "日本語"], ["en", "English"], ["ko", "한국어"]];
 
 let win = null;
 let overlay = null;
+let currentDisplayId = null;
 let tray = null;
 let settings = { ...DEFAULTS };
 
@@ -69,7 +70,10 @@ function createAppWindow() {
 // The transparent, click-through desktop overlay (src/desktop/). Kept for a future
 // "release to desktop" button — not opened on launch.
 function createOverlayWindow() {
-  const { x, y, width, height } = screen.getPrimaryDisplay().workArea;
+  const primaryDisplay = screen.getPrimaryDisplay();
+  currentDisplayId = primaryDisplay.id;
+
+  const { x, y, width, height } = primaryDisplay.workArea;
   const overlay = new BrowserWindow({
     x, y, width, height,
     transparent: true,
@@ -90,6 +94,23 @@ function createOverlayWindow() {
   overlay.setIgnoreMouseEvents(true, { forward: true });
   overlay.loadFile(path.join(APP_ROOT, "src/desktop/index.html"));
   return overlay;
+}
+
+function updateOverlayMonitor() {
+  if (!overlay || overlay.isDestroyed()) return;
+  const cursorPoint = screen.getCursorScreenPoint();
+  const activeDisplay = screen.getDisplayNearestPoint(cursorPoint);
+  if (activeDisplay.id !== currentDisplayId) {
+    currentDisplayId = activeDisplay.id;
+    const { x, y, width, height } = activeDisplay.workArea;
+    overlay.setBounds({
+      x: Math.round(x),
+      y: Math.round(y),
+      width: Math.round(width),
+      height: Math.round(height)
+    });
+    overlay.webContents.send("display:changed");
+  }
 }
 
 // --- battery -----------------------------------------------------------------
@@ -231,6 +252,7 @@ app.whenReady().then(() => {
   });
 
   setInterval(refreshTray, 60_000);
+  setInterval(updateOverlayMonitor, 1000);
   maybeRunSmoke();
 });
 

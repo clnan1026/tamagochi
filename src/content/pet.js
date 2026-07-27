@@ -192,7 +192,9 @@
     onResize() {
       this.x = Math.min(this.x, this.maxX());
       const ground = this.groundY();
-      if (this.y > ground) {
+      if (this.state !== "air" && this.state !== "drag") {
+        this.y = ground;
+      } else if (this.y > ground) {
         this.y = ground;
         if (this.state === "air") this.#rest();
       }
