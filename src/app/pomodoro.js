@@ -11,8 +11,8 @@
 // loaded as a plain <script> in the app (exposed on window.__tamagotchi).
 (() => {
   const DEFAULT_DURATIONS = { pomodoro: 25 * 60, break: 5 * 60 };
-  const MIN_MINUTES = 1;
-  const MAX_MINUTES = 180;
+  const MIN_SECONDS = 1;
+  const MAX_SECONDS = 180 * 60;
 
   class PomodoroTimer {
     // `saved` is a persisted snapshot
@@ -74,13 +74,14 @@
       this.pausedRemaining = this.durations[this.mode];
     }
 
-    // User-configurable duration, in minutes. Only affects an *idle* timer's
-    // displayed remaining time immediately (if `mode` is the current one) — a
-    // session already running keeps counting down on its original duration, so
-    // editing durations mid-focus can't silently add or steal time.
-    setDuration(mode, minutes) {
+    // User-configurable duration, in total seconds (minutes + seconds combined).
+    // Only affects an *idle* timer's displayed remaining time immediately (if
+    // `mode` is the current one) — a session already running keeps counting
+    // down on its original duration, so editing durations mid-focus can't
+    // silently add or steal time.
+    setDuration(mode, totalSeconds) {
       if (!(mode in this.durations)) return;
-      const seconds = clampMinutes(minutes) * 60;
+      const seconds = clampSeconds(totalSeconds);
       this.durations[mode] = seconds;
       if (mode === this.mode && !this.running) {
         this.pausedRemaining = seconds;
@@ -109,8 +110,8 @@
     }
   }
 
-  function clampMinutes(minutes) {
-    return Math.max(MIN_MINUTES, Math.min(MAX_MINUTES, Math.round(minutes)));
+  function clampSeconds(seconds) {
+    return Math.max(MIN_SECONDS, Math.min(MAX_SECONDS, Math.round(seconds)));
   }
 
   // Only keep known modes, and clamp each to sane bounds, when restoring a
@@ -120,15 +121,15 @@
     const clean = {};
     for (const mode of Object.keys(DEFAULT_DURATIONS)) {
       if (typeof durations[mode] === "number" && durations[mode] > 0) {
-        clean[mode] = clampMinutes(durations[mode] / 60) * 60;
+        clean[mode] = clampSeconds(durations[mode]);
       }
     }
     return clean;
   }
 
   PomodoroTimer.DEFAULT_DURATIONS = DEFAULT_DURATIONS;
-  PomodoroTimer.MIN_MINUTES = MIN_MINUTES;
-  PomodoroTimer.MAX_MINUTES = MAX_MINUTES;
+  PomodoroTimer.MIN_SECONDS = MIN_SECONDS;
+  PomodoroTimer.MAX_SECONDS = MAX_SECONDS;
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = { PomodoroTimer };

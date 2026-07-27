@@ -1,5 +1,5 @@
-// Economy — coins, consumable food (by category), one-time ball/character unlocks,
-// and per-room purchasable background choices. Host-agnostic: no DOM, no chrome.*,
+// Economy — coins, consumable food (by category), one-time ball unlocks, and
+// per-room purchasable background choices. Host-agnostic: no DOM, no chrome.*,
 // no Electron. Runnable in Node for tests and loaded as a plain <script> in the app.
 //
 // No "equipped" food/toy concept: using an item means dragging that specific owned
@@ -42,11 +42,6 @@
       basketball: { id: "basketball", emoji: "🏀", price: 50,  forceAnim: "attack2", satietyCost: 8,  coinReward: 6,  names: { en: "Basketball", ja: "バスケットボール", ko: "농구공" } },
       disco_ball: { id: "disco_ball", emoji: "🪩", price: 150, forceAnim: "attack2", satietyCost: 5,  coinReward: 12, names: { en: "Disco Ball", ja: "ディスコボール", ko: "디스코볼" } },
     },
-    characters: {
-      pink:  { id: "pink",  price: 0 },
-      owlet: { id: "owlet", price: 150 },
-      dude:  { id: "dude",  price: 250 },
-    },
     // 2 purchasable alternate backgrounds per room, on top of that room's free
     // default solid color (see room.js's ROOMS map). Placeholder art — the user
     // will replace assets/backgrounds/*.png themselves later.
@@ -68,7 +63,6 @@
 
   const FREE_FOOD_ID = "kibble";
   const DEFAULT_TOY_ID = "ball";
-  const DEFAULT_CHARACTER_ID = "pink";
   const ROOM_IDS = ["kitchen", "gameroom", "bedroom"];
   const FOOD_CATEGORIES = ["drinks", "sweets", "meals"];
   const FEED_COIN_REWARD = 2;
@@ -112,21 +106,11 @@
   }
 
   class Economy {
-    // `saved` is a persisted snapshot (see snapshot()) or null. `activeCharacter` is
-    // the character currently chosen in settings (see app.js) — used only to
-    // grandfather an already-chosen character into ownership on first-ever save
-    // under this schema, so upgrading doesn't retroactively lock someone out of
-    // a character they'd already picked before this economy existed.
-    constructor(saved = null, activeCharacter = null) {
+    // `saved` is a persisted snapshot (see snapshot()) or null.
+    constructor(saved = null) {
       this.coins = Number.isFinite(saved?.coins) && saved.coins > 0 ? Math.floor(saved.coins) : 0;
       this.foodCounts = sanitizeFoodCounts(saved?.foodCounts);
       this.ownedToys = sanitizeIds(saved?.ownedToys, CATALOG.toys, [DEFAULT_TOY_ID]);
-
-      const characterDefaults = [DEFAULT_CHARACTER_ID];
-      if (!saved && activeCharacter && CATALOG.characters[activeCharacter]) {
-        characterDefaults.push(activeCharacter);
-      }
-      this.ownedCharacters = sanitizeIds(saved?.ownedCharacters, CATALOG.characters, characterDefaults);
 
       this.ownedBackgrounds = sanitizeBackgroundOwnership(saved?.ownedBackgrounds);
       this.currentBackgroundId = sanitizeCurrentBackground(saved?.currentBackgroundId, this.ownedBackgrounds);
@@ -157,15 +141,6 @@
       if (item.price > 0 && !this.canAfford(item.price)) return false;
       if (item.price > 0) this.coins -= item.price;
       this.ownedToys.push(id);
-      return true;
-    }
-
-    buyCharacter(id) {
-      const item = CATALOG.characters[id];
-      if (!item || this.ownedCharacters.includes(id)) return false;
-      if (item.price > 0 && !this.canAfford(item.price)) return false;
-      if (item.price > 0) this.coins -= item.price;
-      this.ownedCharacters.push(id);
       return true;
     }
 
@@ -229,7 +204,6 @@
         coins: this.coins,
         foodCounts: { ...this.foodCounts },
         ownedToys: [...this.ownedToys],
-        ownedCharacters: [...this.ownedCharacters],
         ownedBackgrounds: {
           kitchen: [...this.ownedBackgrounds.kitchen],
           gameroom: [...this.ownedBackgrounds.gameroom],
@@ -244,7 +218,6 @@
   Economy.CATALOG = CATALOG;
   Economy.FREE_FOOD_ID = FREE_FOOD_ID;
   Economy.DEFAULT_TOY_ID = DEFAULT_TOY_ID;
-  Economy.DEFAULT_CHARACTER_ID = DEFAULT_CHARACTER_ID;
   Economy.ROOM_IDS = ROOM_IDS;
   Economy.FOOD_CATEGORIES = FOOD_CATEGORIES;
   Economy.FEED_COIN_REWARD = FEED_COIN_REWARD;

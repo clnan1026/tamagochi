@@ -200,29 +200,12 @@ html[lang="ko"] #shop-coin-count { font-size: 10px; }
   display: none;
 }
 .char-card.selected .select-badge { display: block; }
-
-.lock-badge {
-  position: absolute;
-  inset: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  background: rgba(10, 10, 16, 0.55);
-  border-radius: 6px;
-  color: #fff;
-  font-weight: 700;
-  font-size: 15px;
-}
-.char-card.locked .lock-badge { display: flex; }
-.char-card.locked { cursor: default; }
-.lock-icon { font-size: 18px; }
 .select-footer { display: flex; gap: 10px; }
 .select-footer .btn { flex: 1; }
 
 /* --- pet room --------------------------------------------------------------- */
 #screen-room { padding: 14px; gap: 12px; }
-.room-topbar { display: flex; align-items: center; gap: 10px; }
+.room-topbar { display: flex; align-items: center; gap: 10px; align-self: stretch; width: 100%; }
 .room-topbar .pet-name { font-weight: 700; font-size: 17px; flex: 1; text-align: center; }
 .icon-btn {
   background: var(--bg-card);
@@ -322,33 +305,6 @@ html[lang="ko"] #shop-coin-count { font-size: 10px; }
   will-change: transform;
 }
 .dust.visible { opacity: 0.9; }
-
-/* --- Game Room: bouncing ball shelf ------------------------------------------ */
-.ball-layer {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.ball-sprite {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 26px;
-  pointer-events: auto;
-  cursor: grab;
-  touch-action: none;
-  will-change: transform;
-}
-.ball-sprite.locked {
-  opacity: 0.35;
-  filter: grayscale(1);
-  cursor: default;
-}
 
 /* --- Bedroom: mic record + pitch-shifted playback ---------------------------- */
 .mic-panel {
@@ -518,7 +474,7 @@ html[lang="ko"] #shop-coin-count { font-size: 10px; }
   align-items: stretch;
   gap: 10px;
   width: 100%;
-  max-width: 260px;
+  max-width: 300px;
   padding: 14px;
   background: var(--bg-card);
   border: var(--pixel-border) solid var(--pixel-ink);
@@ -529,15 +485,15 @@ html[lang="ko"] #shop-coin-count { font-size: 10px; }
 .duration-field {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 5px;
+  font-size: 13px;
   font-weight: 600;
 }
 .duration-field span:first-child { flex: 1; }
-.duration-field span:last-child { color: var(--text-muted); font-weight: 400; font-size: 12px; }
+.duration-unit { color: var(--text-muted); font-weight: 400; font-size: 11px; }
 .duration-input {
-  width: 56px;
-  padding: 6px 8px;
+  width: 42px;
+  padding: 6px 4px;
   border-radius: 6px;
   border: 2px solid var(--pixel-ink);
   background: var(--bg-primary);
@@ -614,42 +570,27 @@ html[lang="ko"] #shop-coin-count { font-size: 10px; }
 .task-add:hover { background: var(--bg-hover); }
 .task-add[disabled] { opacity: 0.4; cursor: default; }
 
-/* --- bottom dock: tray/shelf/mic content (left) + action shortcuts (right),
-   merged into one cohesive Pou-style bar instead of two stacked rows. -------- */
-.bottom-dock {
+/* --- bottom actions row: just Shop + Pomodoro (or Room while in the Shop),
+   as its own standalone pill bar below the tray/shelf/mic row. -------------- */
+.actions-container {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  width: 100%;
   background: var(--bg-card);
   border: var(--pixel-border-thick) solid var(--pixel-ink);
   border-radius: var(--radius-lg);
   box-shadow: var(--pixel-shadow-lg);
-  padding: 4px 8px;
-}
-.dock-content {
-  flex: 1;
-  min-width: 0;
-}
-.actions-container {
-  display: flex;
-  flex-shrink: 0;
+  padding: 8px;
 }
 .actions-group {
   display: none;
+  width: 100%;
 }
 .actions-group.active {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
-.icon-action {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  padding: 0;
-  font-size: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.actions-group .btn {
+  flex: 1;
 }
 
 /* --- field swiper slider --- */

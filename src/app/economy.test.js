@@ -7,7 +7,6 @@ test("defaults for a brand-new economy", () => {
   assert.equal(e.coins, 0);
   assert.deepEqual(e.foodCounts, {});
   assert.deepEqual(e.ownedToys, ["ball"]);
-  assert.deepEqual(e.ownedCharacters, ["pink"]);
   assert.deepEqual(e.ownedBackgrounds, { kitchen: [], gameroom: [], bedroom: [] });
   assert.deepEqual(e.currentBackgroundId, { kitchen: null, gameroom: null, bedroom: null });
   assert.equal(e.currentRoomId, "kitchen");
@@ -45,27 +44,6 @@ test("buyToy: one-time unlock, no double charge", () => {
   assert.equal(e.buyToy("ball"), false); // already owned by default
 });
 
-test("buyCharacter: unlock, insufficient funds, already-owned", () => {
-  const e = new Economy();
-  assert.equal(e.buyCharacter("owlet"), false); // 0 coins
-  e.addCoins(150);
-  assert.equal(e.buyCharacter("owlet"), true);
-  assert.equal(e.coins, 0);
-  assert.deepEqual(e.ownedCharacters, ["pink", "owlet"]);
-  assert.equal(e.buyCharacter("pink"), false); // already owned (default)
-});
-
-test("grandfathering: an already-active character is auto-owned on first save", () => {
-  const e = new Economy(null, "dude");
-  assert.deepEqual(new Set(e.ownedCharacters), new Set(["pink", "dude"]));
-
-  // Only applies to a brand-new (null) save — an existing save is never mutated
-  // by whatever the currently active character happens to be.
-  const saved = e.snapshot();
-  const e2 = new Economy({ ...saved, ownedCharacters: ["pink"] }, "owlet");
-  assert.deepEqual(e2.ownedCharacters, ["pink"]);
-});
-
 test("buyBackground: buy-and-equip, re-equip without repaying, can't double-buy", () => {
   const e = new Economy();
   e.addCoins(200);
@@ -91,7 +69,6 @@ test("snapshot/restore round-trips", () => {
   e.addCoins(500);
   e.buyFood("treat");
   e.buyToy("kite");
-  e.buyCharacter("owlet");
   e.buyBackground("gameroom", "gameroom_bg1");
   e.setCurrentRoom("bedroom");
 
@@ -111,6 +88,5 @@ test("sanitizes an old-shaped or corrupted snapshot without throwing", () => {
   assert.equal(e.coins, 0);
   assert.deepEqual(e.foodCounts, { treat: 2 });
   assert.deepEqual(new Set(e.ownedToys), new Set(["ball", "yoyo"]));
-  assert.deepEqual(e.ownedCharacters, ["pink"]);
   assert.equal(e.currentRoomId, "kitchen"); // falls back to the default
 });

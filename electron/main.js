@@ -330,20 +330,6 @@ function maybeRunSmoke() {
       const centerOf = (selector) => js(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
         return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
       const waitForLoad = () => new Promise((resolve) => wc.once("did-finish-load", resolve));
-      // Balls genuinely free-fall under gravity, unlike the static tray items —
-      // reading a position then acting on it a round-trip later can miss a
-      // still-moving ball entirely. Poll until it reports the same spot twice in
-      // a row (i.e., actually "shelved", not mid-bounce) before acting on it.
-      const waitUntilStationary = async (selector, maxAttempts = 15) => {
-        let last = null;
-        for (let i = 0; i < maxAttempts; i++) {
-          const rect = await centerOf(selector);
-          if (last && rect.x === last.x && rect.y === last.y) return rect;
-          last = rect;
-          await wait(100);
-        }
-        return last;
-      };
 
       try {
         // --- First-ever boot: no character chosen yet → Start, then Select ------
@@ -369,15 +355,12 @@ function maybeRunSmoke() {
           startActive: document.getElementById('screen-start').classList.contains('active'),
         })`);
 
-        // Seed a hungry, slightly-hurt Pink + a starter coin balance + Owlet
-        // ownership (for the later per-character stats isolation test) so drag
+        // Seed a hungry, slightly-hurt Pink + a starter coin balance so drag
         // actions produce a visible change without waiting for real spawn timers.
         await js(`document.getElementById('room-back').click()`);
         await wait(150);
         await js(`localStorage.setItem('tama-stats:pink', JSON.stringify({ hp: 80, satiety: 20, lastSeen: Date.now() }))`);
-        await js(`localStorage.setItem('tama-economy', JSON.stringify({
-          coins: 1200, ownedCharacters: ['pink', 'owlet'],
-        }))`);
+        await js(`localStorage.setItem('tama-economy', JSON.stringify({ coins: 1200 }))`);
         // Shrinks the coin-spawn wait to its real floor (still real time, not
         // eliminated — production spawn cadence is untouched) by removing
         // Math.random()'s jitter component; other randomness (wander, phrases,
@@ -485,10 +468,11 @@ function maybeRunSmoke() {
         await js(`document.getElementById('swiper-next').click()`); // → Game Room
         await wait(300);
         report.roomGame = await js(`document.getElementById('swiper-label').textContent`);
+        // Game Room now uses the exact same static drag tray as Kitchen — just
+        // showing owned balls instead of owned food (no bouncing/physics).
         report.gameRoomPanels = await js(`({
-          trayHidden: getComputedStyle(document.getElementById('item-tray')).display === 'none',
-          ballCount: document.querySelectorAll('.ball-sprite').length,
-          lockedBallCount: document.querySelectorAll('.ball-sprite.locked').length,
+          trayVisible: getComputedStyle(document.getElementById('item-tray')).display !== 'none',
+          trayItems: Array.from(document.querySelectorAll('#item-tray .tray-item')).map((el) => el.textContent.trim()),
         })`);
         await shot("app-room-gameroom.png");
 
@@ -498,7 +482,6 @@ function maybeRunSmoke() {
         report.bedroomPanels = await js(`({
           micVisible: getComputedStyle(document.getElementById('mic-panel')).display !== 'none',
           trayHidden: getComputedStyle(document.getElementById('item-tray')).display === 'none',
-          ballLayerEmpty: document.querySelectorAll('.ball-sprite').length === 0,
         })`);
         await shot("app-room-bedroom.png");
 
@@ -575,14 +558,13 @@ function maybeRunSmoke() {
         await wait(200);
         report.backFromShop = await js(`getComputedStyle(document.getElementById('stage')).display !== 'none'`);
 
-        // --- Ball shelf: tap a bouncing ball to shelve it, then drag the now-
-        // stationary ball onto the pet (Play effect) and confirm a locked ball is
-        // inert. --------------------------------------------------------------
-        const settledBall = await waitUntilStationary(".ball-sprite:not(.locked)");
-        await click(settledBall.x, settledBall.y); // tap → sends it home to the shelf
-        const shelvedBall = await waitUntilStationary(".ball-sprite:not(.locked)");
+        // --- Ball tray: the exact same static drag-tray mechanism as Kitchen's
+        // food tray — just showing owned balls (ball/yoyo/kite bought above). ----
+        report.gameRoomTrayAfterBuys = await js(
+          `Array.from(document.querySelectorAll('#item-tray .tray-item')).map((el) => el.textContent.trim())`
+        );
         const coinsBeforeBallPlay = await js(`document.getElementById('coin-count').textContent`);
-        await dragItem(shelvedBall, await centerOf("#pet"));
+        await dragItem(await centerOf("#item-tray .tray-item"), await centerOf("#pet"));
         await wait(200);
         report.afterBallPlayDrag = await js(`({
           coinsBefore: ${JSON.stringify(coinsBeforeBallPlay)},
@@ -591,55 +573,42 @@ function maybeRunSmoke() {
           coinFx: !!document.querySelector('.fx-coin'),
         })`);
 
-        const lockedBall = await centerOf(".ball-sprite.locked");
-        await click(lockedBall.x, lockedBall.y);
-        await wait(150);
-        report.lockedBallHint = await js(`document.getElementById('bubble').textContent`);
+        // Drag a tray item and drop it far from the pet → should snap back, no effect.
+        const ballTrayBeforeMiss = await centerOf("#item-tray .tray-item");
+        await dragItem(ballTrayBeforeMiss, { x: 5, y: 5 });
+        await wait(400); // let the snap-back transition finish
+        report.afterBallMissDrag = await js(`({
+          coins: document.getElementById('coin-count').textContent,
+          ghostGone: document.querySelectorAll('.drag-ghost').length === 0,
+        })`);
 
-        // --- Bedroom shop: Characters tab (Owlet already owned via seed, Dude is
-        // not) + Backgrounds tab. -------------------------------------------------
+        // --- Bedroom shop: only a Backgrounds tab (characters are no longer sold
+        // anywhere — all 3 are freely playable, no locking/purchase). -------------
         await js(`document.getElementById('swiper-next').click()`); // → Bedroom
         await wait(150);
         await js(`document.querySelector('.actions-group.active [data-action="shop"]').click()`);
         await wait(150);
-        // shopCategory persists across shop visits and "backgrounds" is a valid
-        // tab in every room, so it can carry over from the Game Room visit above
-        // instead of defaulting to Bedroom's other tab — select Characters explicitly.
-        await js(`Array.from(document.querySelectorAll('.shop-tab')).find((t) => t.textContent.includes('Characters') || t.textContent.includes('キャラクター') || t.textContent.includes('캐릭터')).click()`);
-        await wait(100);
-        await shot("app-shop-characters.png");
-        // room.js's buy handler calls renderShop(), rebuilding the whole grid —
-        // the pre-click "dude" reference goes stale/detached once clicked, so
-        // "after" must be re-queried fresh rather than read off the old node.
-        const findDudeCard = () => js(`(() => {
-          const cards = Array.from(document.querySelectorAll('#shop-grid .shop-item'));
-          const dude = cards.find((c) => c.querySelector('.shop-item-name').textContent.includes('Dud')
-            || c.querySelector('.shop-item-name').textContent.includes('デュ')
-            || c.querySelector('.shop-item-name').textContent.includes('듀'));
-          return dude.querySelector('button').textContent;
+        report.bedroomShopTabs = await js(`Array.from(document.querySelectorAll('.shop-tab')).map((t) => t.textContent)`);
+        await shot("app-shop-bedroom-backgrounds.png");
+        report.buyBedroomBackground = await js(`(() => {
+          const cards = document.querySelectorAll('#shop-grid .shop-item');
+          const purchasable = cards[1]; // cards[0] is the always-owned "Default" card
+          purchasable.querySelector('button').click();
+          return purchasable.querySelector('button').textContent;
         })()`);
-        const dudeBefore = await findDudeCard();
-        await js(`(() => {
-          const cards = Array.from(document.querySelectorAll('#shop-grid .shop-item'));
-          const dude = cards.find((c) => c.querySelector('.shop-item-name').textContent.includes('Dud')
-            || c.querySelector('.shop-item-name').textContent.includes('デュ')
-            || c.querySelector('.shop-item-name').textContent.includes('듀'));
-          dude.querySelector('button').click();
-        })()`);
-        report.buyCharacter = { before: dudeBefore, after: await findDudeCard() };
+        report.stageBgAfterBedroomBuy = await js(`getComputedStyle(document.getElementById('stage')).backgroundImage`);
+        await js(`document.querySelectorAll('#shop-grid .shop-item')[0].querySelector('button').click()`); // revert to default
         await js(`document.querySelector('.actions-group.active [data-action="field"]').click()`);
         await wait(150);
 
         // --- Character switch + per-character stats isolation: this is the core
         // regression test for this session's original bug (a stale global stats
         // key made a freshly-picked character appear to die instantly). Pink was
-        // seeded hungry/hurt above; Owlet must come up completely fresh. ---------
+        // seeded hungry/hurt above; Owlet must come up completely fresh. All three
+        // characters are freely selectable — no lock/purchase gate anymore. -------
         await js(`document.getElementById('room-back').click()`);
         await wait(150);
-        report.selectLocksAfterPurchases = await js(`({
-          owletLocked: document.querySelector('.char-card[data-char="owlet"]').classList.contains('locked'),
-          dudeLocked: document.querySelector('.char-card[data-char="dude"]').classList.contains('locked'),
-        })`);
+        report.charCardsUnlocked = await js(`Array.from(document.querySelectorAll('.char-card')).every((c) => !c.classList.contains('locked'))`);
         await js(`document.querySelector('.char-card[data-char="owlet"]').click();
                   document.getElementById('select-confirm').click()`);
         await wait(500);
@@ -682,8 +651,13 @@ function maybeRunSmoke() {
 
         // --- Coin/poop spawn (Game Room only): real-time wait at the (jitter-
         // removed) 25s floor. Room order is Kitchen → Game Room → Bedroom, cycling
-        // "next" until the Game Room's ball layer is the one showing. -------------
-        for (let i = 0; i < 3 && (await js(`document.querySelectorAll('.ball-sprite').length`)) === 0; i++) {
+        // "next" until the Game Room is the one showing (both it and Kitchen now
+        // show a tray, so match on the room label rather than tray presence). ----
+        const isGameRoom = () => js(`(() => {
+          const t = document.getElementById('swiper-label').textContent;
+          return t.includes('Game Room') || t.includes('ゲームルーム') || t.includes('게임룸');
+        })()`);
+        for (let i = 0; i < 3 && !(await isGameRoom()); i++) {
           await js(`document.getElementById('swiper-next').click()`);
           await wait(150);
         }
@@ -717,7 +691,7 @@ function maybeRunSmoke() {
         await shot("app-room-coinpickup.png");
 
         // --- Pomodoro screen: navigate, tabs, task cap, alarm wiring, right-click ---
-        await js(`document.getElementById('room-pomodoro').click()`);
+        await js(`document.querySelector('.actions-group.active [data-action="pomodoro"]').click()`);
         await wait(200);
         report.pomodoroScreenActive = await js(
           `document.getElementById('screen-pomodoro').classList.contains('active')`
@@ -732,14 +706,16 @@ function maybeRunSmoke() {
         }
         await js(`document.querySelector('.mode-tab[data-mode="pomodoro"]').click()`);
 
-        // Custom durations: open the editor, set Pomodoro=10min/Break=3min, save,
-        // and confirm both the display and the OTHER mode's tab pick it up.
+        // Custom durations: open the editor, set Pomodoro=10min 15sec/Break=3min,
+        // save, and confirm both the display and the OTHER mode's tab pick it up.
         await js(`document.getElementById('duration-edit-btn').click()`);
         await wait(50);
         report.durationEditorOpen = await js(`!document.getElementById('duration-editor').hidden`);
         await js(`(() => {
-          document.getElementById('duration-pomodoro').value = 10;
-          document.getElementById('duration-break').value = 3;
+          document.getElementById('duration-pomodoro-min').value = 10;
+          document.getElementById('duration-pomodoro-sec').value = 15;
+          document.getElementById('duration-break-min').value = 3;
+          document.getElementById('duration-break-sec').value = 0;
         })()`);
         await js(`document.getElementById('duration-save').click()`);
         await wait(50);
@@ -819,7 +795,7 @@ function maybeRunSmoke() {
 
         // The "Alarm" action button (not the topbar shortcut) should also reach
         // Pomodoro — this is the real feature now standing in for the old stub.
-        await js(`document.querySelector('.actions-group.active [data-action="alarm"]').click()`);
+        await js(`document.querySelector('.actions-group.active [data-action="pomodoro"]').click()`);
         await wait(150);
         report.alarmActionOpensPomodoro = await js(
           `document.getElementById('screen-pomodoro').classList.contains('active')`

@@ -40,7 +40,6 @@
             <span class="char-desc" data-i18n="pink_desc">Cheerful and loves adventure</span>
           </div>
           <div class="select-badge">✓</div>
-          <div class="lock-badge"><span class="lock-icon">🔒</span><span class="lock-price"></span></div>
         </div>
         <div class="char-card" data-char="owlet">
           <div class="char-preview owlet-preview"></div>
@@ -49,7 +48,6 @@
             <span class="char-desc" data-i18n="owlet_desc">Gentle and loves reading books</span>
           </div>
           <div class="select-badge">✓</div>
-          <div class="lock-badge"><span class="lock-icon">🔒</span><span class="lock-price"></span></div>
         </div>
         <div class="char-card" data-char="dude">
           <div class="char-preview dude-preview"></div>
@@ -58,7 +56,6 @@
             <span class="char-desc" data-i18n="dude_desc">Curious and full of mischief</span>
           </div>
           <div class="select-badge">✓</div>
-          <div class="lock-badge"><span class="lock-icon">🔒</span><span class="lock-price"></span></div>
         </div>
       </div>
       <div class="select-footer">
@@ -71,12 +68,11 @@
     <section id="screen-room" class="screen">
       <div class="room-topbar">
         <button id="room-back" class="icon-btn" title="Change character">‹</button>
+        <span class="pet-name" id="room-pet-name">Pinky</span>
         <div class="coin-badge" id="coin-badge">
           <span class="coin-icon"></span>
           <span id="coin-count">0</span>
         </div>
-        <span class="pet-name" id="room-pet-name">Pinky</span>
-        <button id="room-pomodoro" class="icon-btn" title="Pomodoro">⏰</button>
       </div>
 
       <div class="stats">
@@ -107,7 +103,6 @@
       <!-- Center views -->
       <div class="stage" id="stage">
         <div class="dust" id="dust"></div>
-        <div class="ball-layer" id="ball-layer"></div>
         <div class="bubble" id="bubble"></div>
         <div class="task-tag" id="task-tag"></div>
         <div class="pet" id="pet"></div>
@@ -132,28 +127,23 @@
         <div class="shop-grid" id="shop-grid"></div>
       </div>
 
-      <!-- Bottom dock: the room's tray/shelf/mic content on the left, the two
-           action shortcuts (icon-only, circular) pinned to the right — reads as
-           one cohesive Pou-style bottom bar. Drag-and-drop food tray (Kitchen);
-           the Bedroom's mic panel is a sibling shown instead — exactly one of the
-           two (or the Game Room's on-stage ball shelf) is visible at a time, per
-           the current room's type. -->
-      <div class="bottom-dock">
-        <div class="dock-content">
-          <div class="item-tray" id="item-tray"></div>
-          <div class="mic-panel" id="mic-panel" style="display: none;">
-            <button id="mic-btn" class="mic-btn" title="Record">🎤</button>
-          </div>
+      <!-- Drag-and-drop food tray (Kitchen); the Bedroom's mic panel is a sibling
+           shown instead — exactly one of the two (or the Game Room's on-stage ball
+           shelf) is visible at a time, per the current room's type. -->
+      <div class="item-tray" id="item-tray"></div>
+      <div class="mic-panel" id="mic-panel" style="display: none;">
+        <button id="mic-btn" class="mic-btn" title="Record">🎤</button>
+      </div>
+
+      <!-- Bottom action buttons: just Shop + Pomodoro. -->
+      <div class="actions-container">
+        <div class="actions-group active" id="actions-room">
+          <button class="btn" data-action="pomodoro" data-i18n="btn_pomodoro">⏰ Pomodoro</button>
+          <button class="btn" data-action="shop" data-i18n="btn_shop">🛒 Shop</button>
         </div>
-        <div class="actions-container">
-          <div class="actions-group active" id="actions-room">
-            <button class="btn icon-action" data-action="alarm" title="Alarm">⏰</button>
-            <button class="btn icon-action" data-action="shop" title="Shop">🛒</button>
-          </div>
-          <div class="actions-group" id="actions-shop">
-            <button class="btn icon-action" data-action="alarm" title="Alarm">⏰</button>
-            <button class="btn icon-action" data-action="field" title="Back to Room">🏡</button>
-          </div>
+        <div class="actions-group" id="actions-shop">
+          <button class="btn" data-action="pomodoro" data-i18n="btn_pomodoro">⏰ Pomodoro</button>
+          <button class="btn" data-action="field" data-i18n="btn_room">🏡 Room</button>
         </div>
       </div>
     </section>
@@ -181,13 +171,17 @@
       <div class="duration-editor" id="duration-editor" hidden>
         <label class="duration-field">
           <span data-i18n="mode_pomodoro">Pomodoro</span>
-          <input type="number" id="duration-pomodoro" class="duration-input" min="1" max="180" />
-          <span data-i18n="minutes_unit">min</span>
+          <input type="number" id="duration-pomodoro-min" class="duration-input" min="0" max="180" />
+          <span class="duration-unit" data-i18n="minutes_unit">min</span>
+          <input type="number" id="duration-pomodoro-sec" class="duration-input" min="0" max="59" />
+          <span class="duration-unit" data-i18n="seconds_unit">sec</span>
         </label>
         <label class="duration-field">
           <span data-i18n="mode_break">Break</span>
-          <input type="number" id="duration-break" class="duration-input" min="1" max="180" />
-          <span data-i18n="minutes_unit">min</span>
+          <input type="number" id="duration-break-min" class="duration-input" min="0" max="180" />
+          <span class="duration-unit" data-i18n="minutes_unit">min</span>
+          <input type="number" id="duration-break-sec" class="duration-input" min="0" max="59" />
+          <span class="duration-unit" data-i18n="seconds_unit">sec</span>
         </label>
         <button id="duration-save" class="btn" data-i18n="save_button">Save</button>
       </div>
@@ -209,7 +203,6 @@
     <script src="pomodoro.js"></script>
     <script src="alarm.js"></script>
     <script src="economy.js"></script>
-    <script src="ball-physics.js"></script>
     <script src="room.js"></script>
     <script src="app.js"></script>
   </body>

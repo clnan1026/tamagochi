@@ -1,6 +1,6 @@
 // Pet Room controller — the Talking Tom-style screen. Wires the shared pet engine
-// (Sprite + Pet + input) to the 3 stat bars, drag-and-drop feeding/playing/balls,
-// the coin economy, the Bedroom mic, and the Shop. Exposed as window.__tamagotchi.Room;
+// (Sprite + Pet + input) to the 3 stat bars, drag-and-drop feeding/playing, the
+// coin economy, the Bedroom mic, and the Shop. Exposed as window.__tamagotchi.Room;
 // driven by app.js.
 (() => {
   const NS = (window.__tamagotchi ??= {});
@@ -28,12 +28,6 @@
   const POOP_REWARD_MAX = 15;
   const DROP_HIT_MARGIN = 20; // px of forgiveness around the pet for drag-drop
 
-  const BALL_SIZE = 40;
-  const BALL_SHELF_MARGIN = 8;
-  const MAX_ACTIVE_BOUNCERS = 4;
-  const SHELF_HOLD_MS = 500; // how long a returned ball rests before bouncing again
-  const TAP_THRESHOLD_PX = 6;
-
   const MIC_PITCH = 1.6; // classic Talking-Tom chipmunk playback rate
 
   const FEED_PHRASES = {
@@ -60,7 +54,6 @@
   const BUY_LABEL = { en: "Buy", ja: "購入", ko: "구매" };
   const OWNED_LABEL = { en: "Owned", ja: "所有済み", ko: "보유중" };
   const EQUIP_LABEL = { en: "Equip", ja: "使用する", ko: "적용" };
-  const BALL_LOCKED_HINT = { en: "Buy me in the Shop! 🛒", ja: "ショップで買ってね！🛒", ko: "상점에서 구매하세요! 🛒" };
   const MIC_DENIED = { en: "Mic access denied 🎤", ja: "マイクを使えません 🎤", ko: "마이크 접근 거부됨 🎤" };
   const TASKS_KEY = "tama-tasks"; // owned/written by app.js's Pomodoro screen; read fresh here
   const TASK_TAG_MS = 3000;
@@ -77,27 +70,20 @@
   const ROOM_ORDER = ["kitchen", "gameroom", "bedroom"];
 
   // Which shop tabs show up per room — each room's own goods, plus a shared
-  // Backgrounds tab (Bedroom has no good of its own, so it sells characters).
+  // Backgrounds tab (Bedroom has no good of its own besides that).
   const SHOP_TABS = {
     kitchen: ["drinks", "sweets", "meals", "backgrounds"],
     gameroom: ["balls", "backgrounds"],
-    bedroom: ["characters", "backgrounds"],
+    bedroom: ["backgrounds"],
   };
   const SHOP_TAB_LABELS = {
     drinks: { en: "Drinks", ja: "ドリンク", ko: "음료" },
     sweets: { en: "Sweets", ja: "スイーツ", ko: "디저트" },
     meals: { en: "Meals", ja: "ごはん", ko: "식사" },
     balls: { en: "Balls", ja: "ボール", ko: "공" },
-    characters: { en: "Characters", ja: "キャラクター", ko: "캐릭터" },
     backgrounds: { en: "Backgrounds", ja: "背景", ko: "배경" },
   };
   const DEFAULT_BG_LABEL = { en: "Default", ja: "デフォルト", ko: "기본" };
-  const CHARACTER_NAMES = {
-    pink: { en: "Pinky", ja: "ピンキー", ko: "핑키" },
-    owlet: { en: "Owlet", ja: "アウレット", ko: "아울렛" },
-    dude: { en: "Dudy", ja: "デュディ", ko: "듀디" },
-  };
-  const CHARACTER_EMOJI = { pink: "🌸", owlet: "🦉", dude: "😎" };
 
   const pick = (dict, lang) => {
     const list = dict[lang] || dict.ja;
@@ -126,7 +112,6 @@
   let nextCoinAt = 0;
   let nextPoopAt = 0;
   let dragState = null; // { kind, item, originEl, ghost } while a tray item is being dragged
-  let balls = []; // Game Room ball-shelf/bounce state, see renderBallShelf()
 
   // --- mic (Bedroom): Talking-Tom-style record + pitch-shifted playback --------
   let micState = "idle";
@@ -190,7 +175,7 @@
     } catch {
       saved = null;
     }
-    economy = new Economy(saved, character);
+    economy = new Economy(saved);
   }
 
   function persistEconomy() {
@@ -282,7 +267,7 @@
     const dt = Math.min((now - lastTime) / 1000, MAX_DT);
     lastTime = now;
 
-    // The pet itself (and its dust/bubble/tired-flinch/spawns/balls) only exists
+    // The pet itself (and its dust/bubble/tired-flinch/spawns) only exists
     // visually while a Room is showing — not while browsing the Shop. Stats keep
     // ticking regardless, same "background" philosophy as the Pomodoro timer.
     const petVisible = currentScreen === "room";
@@ -309,7 +294,6 @@
       positionBubble();
       updateDust(dt);
       updateSpawns(now);
-      updateBalls(dt);
     }
     renderBars();
 
@@ -344,7 +328,6 @@
     gameOver = true;
     pet.die();
     els.itemTray.innerHTML = ""; // nothing to feed/play with while fainted
-    clearBallLayer();
     stopMicIfActive();
     els.gameover.hidden = false;
     clearTimeout(bubbleTimer);
@@ -445,27 +428,33 @@
     }
   }
 
-  // --- drag-and-drop tray: food (Kitchen only) ---------------------------------
+  // --- drag-and-drop tray: food (Kitchen) or balls (Game Room) -----------------
   function renderTray() {
     els.itemTray.innerHTML = "";
     if (gameOver) return;
+    const room = currentRoomDef();
 
-    for (const item of economy.ownedFoodList()) {
+    const entries =
+      room.type === "kitchen"
+        ? economy.ownedFoodList().map((item) => ({ kind: "food", item }))
+        : economy.ownedToyList().map((item) => ({ kind: "toy", item }));
+
+    for (const { kind, item } of entries) {
       const el = document.createElement("div");
       el.className = "tray-item";
       el.textContent = item.emoji;
-      if (item.quantity !== Infinity) {
+      if (kind === "food" && item.quantity !== Infinity) {
         const qty = document.createElement("span");
         qty.className = "tray-item-qty";
         qty.textContent = "×" + item.quantity;
         el.appendChild(qty);
       }
-      el.addEventListener("pointerdown", (e) => startDrag(e, el, item));
+      el.addEventListener("pointerdown", (e) => startDrag(e, el, kind, item));
       els.itemTray.appendChild(el);
     }
   }
 
-  function startDrag(e, originEl, item) {
+  function startDrag(e, originEl, kind, item) {
     if (gameOver || dragState) return;
     e.preventDefault();
     originEl.classList.add("dragging");
@@ -480,7 +469,7 @@
     };
     move(e.clientX, e.clientY);
 
-    dragState = { item, originEl, ghost };
+    dragState = { kind, item, originEl, ghost };
 
     const onMove = (ev) => move(ev.clientX, ev.clientY);
     const onUp = (ev) => {
@@ -504,13 +493,14 @@
 
   function finishDrag(x, y) {
     if (!dragState) return;
-    const { item, originEl, ghost } = dragState;
+    const { kind, item, originEl, ghost } = dragState;
     dragState = null;
 
     if (hitTestPet(x, y) && !gameOver) {
       ghost.remove();
       originEl.classList.remove("dragging");
-      useFood(item);
+      if (kind === "food") useFood(item);
+      else useToy(item);
       renderTray(); // quantities/coins may have changed
       return;
     }
@@ -529,139 +519,6 @@
       },
       { once: true }
     );
-  }
-
-  // --- Game Room: bouncing ball shelf ------------------------------------------
-  function clearBallLayer() {
-    if (els.ballLayer) els.ballLayer.innerHTML = "";
-    balls = [];
-  }
-
-  function positionBall(ball) {
-    ball.el.style.transform = `translate3d(${ball.x}px, ${ball.y}px, 0)`;
-  }
-
-  function launchBall(ball) {
-    if (ball.state !== "shelved") return;
-    ball.state = "bouncing";
-    ball.vx = (Math.random() > 0.5 ? 1 : -1) * randomBetween(60, 140);
-    ball.vy = -randomBetween(250, 400);
-  }
-
-  function renderBallShelf() {
-    if (!els.ballLayer) return;
-    els.ballLayer.innerHTML = "";
-    balls = [];
-
-    const allBalls = Object.values(Economy.CATALOG.toys);
-    const ownedIds = new Set(economy.ownedToys);
-    const stageW = els.stage.clientWidth;
-    const stageH = els.stage.clientHeight;
-    const slotGap = stageW / (allBalls.length + 1);
-
-    allBalls.forEach((item, i) => {
-      const owned = ownedIds.has(item.id);
-      const homeX = Math.round(slotGap * (i + 1) - BALL_SIZE / 2);
-      const homeY = Math.round(stageH - BALL_SIZE - BALL_SHELF_MARGIN);
-
-      const el = document.createElement("div");
-      el.className = "ball-sprite" + (owned ? "" : " locked");
-      el.textContent = item.emoji;
-      els.ballLayer.appendChild(el);
-
-      const ball = { item, el, x: homeX, y: homeY, vx: 0, vy: 0, homeX, homeY, state: owned ? "shelved" : "locked" };
-      balls.push(ball);
-      positionBall(ball);
-
-      if (owned) {
-        el.addEventListener("pointerdown", (e) => onBallPointerDown(e, ball));
-      } else {
-        el.addEventListener("pointerdown", () => say(localize(BALL_LOCKED_HINT, lang)));
-      }
-    });
-
-    // Stagger a capped subset of owned balls into bouncing so the stage doesn't
-    // feel chaotic with all 6 active at once; the rest cycle in via sendBallToShelf.
-    balls
-      .filter((b) => b.state === "shelved")
-      .slice(0, MAX_ACTIVE_BOUNCERS)
-      .forEach((b, i) => setTimeout(() => launchBall(b), i * 400));
-  }
-
-  function updateBalls(dt) {
-    if (balls.length === 0) return;
-    const bounds = { width: els.stage.clientWidth, height: els.stage.clientHeight, size: BALL_SIZE };
-    for (const ball of balls) {
-      if (ball.state !== "bouncing") continue;
-      NS.BallPhysics.stepBall(ball, dt, bounds);
-      positionBall(ball);
-    }
-  }
-
-  function sendBallToShelf(ball) {
-    ball.state = "returning";
-    ball.x = ball.homeX;
-    ball.y = ball.homeY;
-    ball.el.style.transition = "transform 0.3s ease-out";
-    positionBall(ball);
-    setTimeout(() => {
-      ball.el.style.transition = "";
-      ball.state = "shelved";
-      setTimeout(() => launchBall(ball), SHELF_HOLD_MS);
-    }, 320);
-  }
-
-  function resumeBounceAt(ball, clientX, clientY, opts = {}) {
-    const stageRect = els.stage.getBoundingClientRect();
-    ball.x = Math.min(Math.max(clientX - stageRect.left - BALL_SIZE / 2, 0), els.stage.clientWidth - BALL_SIZE);
-    ball.y = Math.min(Math.max(clientY - stageRect.top - BALL_SIZE / 2, 0), els.stage.clientHeight - BALL_SIZE);
-    ball.vx = opts.vx ?? (Math.random() > 0.5 ? 1 : -1) * randomBetween(40, 100);
-    ball.vy = opts.vy ?? 0;
-    ball.state = "bouncing";
-    positionBall(ball);
-  }
-
-  function finishBallDrag(ball, ghost, x, y) {
-    ghost.remove();
-    if (hitTestPet(x, y) && !gameOver) {
-      useToy(ball.item);
-      resumeBounceAt(ball, x, y, { vx: 0, vy: -randomBetween(150, 300) });
-      return;
-    }
-    // A ball's "origin" is a moving physics object, not a static tray slot, so a
-    // miss just resumes bouncing from the drop point rather than snapping back.
-    resumeBounceAt(ball, x, y);
-  }
-
-  function onBallPointerDown(e, ball) {
-    if (ball.state === "locked" || ball.state === "dragged" || ball.state === "returning") return;
-    e.preventDefault();
-    const startX = e.clientX;
-    const startY = e.clientY;
-    let dragging = false;
-    let ghost = null;
-
-    const onMove = (ev) => {
-      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > TAP_THRESHOLD_PX) {
-        dragging = true;
-        ball.state = "dragged";
-        ghost = document.createElement("div");
-        ghost.className = "drag-ghost";
-        ghost.textContent = ball.item.emoji;
-        document.body.appendChild(ghost);
-      }
-      if (dragging) {
-        ghost.style.transform = `translate3d(${ev.clientX - 28}px, ${ev.clientY - 28}px, 0)`;
-      }
-    };
-    const onUp = (ev) => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      if (dragging) finishBallDrag(ball, ghost, ev.clientX, ev.clientY);
-      else sendBallToShelf(ball);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
   }
 
   // --- Bedroom: mic record + pitch-shifted playback ----------------------------
@@ -781,23 +638,7 @@
         if (economy.buyToy(item.id)) {
           persistEconomy();
           renderShop();
-          if (currentRoomDef().type === "field") renderBallShelf();
-          renderCoinBadge();
-        }
-      })
-    );
-    return card;
-  }
-
-  function renderCharacterCard(item) {
-    const card = shopCardBase(CHARACTER_EMOJI[item.id] || "🐣", localize(CHARACTER_NAMES[item.id] || {}, lang) || item.id);
-    const owned = economy.ownedCharacters.includes(item.id);
-    if (!owned) card.appendChild(priceRow(item.price));
-    card.appendChild(
-      buyButton(owned, item.price, null, () => {
-        if (economy.buyCharacter(item.id)) {
-          persistEconomy();
-          renderShop();
+          if (currentRoomDef().type === "field") renderTray();
           renderCoinBadge();
         }
       })
@@ -872,11 +713,6 @@
         if (item.id === Economy.DEFAULT_TOY_ID) continue; // the ball is always owned
         els.shopGrid.appendChild(renderToyCard(item));
       }
-    } else if (shopCategory === "characters") {
-      for (const item of Object.values(Economy.CATALOG.characters)) {
-        if (item.id === Economy.DEFAULT_CHARACTER_ID) continue; // pink is always owned
-        els.shopGrid.appendChild(renderCharacterCard(item));
-      }
     } else {
       // food sub-categories: drinks / sweets / meals
       for (const item of Object.values(Economy.CATALOG.foods)) {
@@ -909,19 +745,18 @@
     renderBottomPanel();
   }
 
-  // Exactly one of the tray / ball-shelf / mic panel is shown at a time, keyed
-  // off the current room's type.
+  // Exactly one of the tray / mic panel is shown at a time, keyed off the
+  // current room's type — Kitchen and Game Room both use the same drag tray
+  // (food vs. balls), Bedroom shows the mic instead.
   function renderBottomPanel() {
     const room = currentRoomDef();
+    const showTray = room.type === "kitchen" || room.type === "field";
 
-    els.itemTray.style.display = room.type === "kitchen" ? "flex" : "none";
+    els.itemTray.style.display = showTray ? "flex" : "none";
     if (els.micPanel) els.micPanel.style.display = room.type === "bedroom" ? "flex" : "none";
 
-    if (room.type === "kitchen") renderTray();
+    if (showTray) renderTray();
     else els.itemTray.innerHTML = "";
-
-    if (room.type === "field") renderBallShelf();
-    else clearBallLayer();
 
     if (room.type !== "bedroom") stopMicIfActive();
   }
@@ -940,7 +775,6 @@
       stage: document.getElementById("stage"),
       petEl: document.getElementById("pet"),
       dust: document.getElementById("dust"),
-      ballLayer: document.getElementById("ball-layer"),
       bubble: document.getElementById("bubble"),
       taskTag: document.getElementById("task-tag"),
       fillHp: document.getElementById("fill-hp"),
@@ -997,15 +831,12 @@
       const action = btn.dataset.action;
       if (action === "shop") changeScreen("shop");
       else if (action === "field") changeScreen("room");
-      // "alarm" buttons are handled separately in app.js (they open the
+      // "pomodoro" buttons are handled separately in app.js (they open the
       // top-level Pomodoro screen) — nothing to do here.
     });
 
     window.addEventListener("resize", () => {
-      if (currentScreen === "room") {
-        pet.onResize();
-        if (currentRoomDef().type === "field") renderBallShelf();
-      }
+      if (currentScreen === "room") pet.onResize();
     });
     window.addEventListener("beforeunload", () => {
       persist();

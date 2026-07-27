@@ -22,13 +22,16 @@
       start_timer_button: "Start",
       pause_timer_button: "Pause",
       minutes_unit: "min",
+      seconds_unit: "sec",
       save_button: "Save",
       tasks_heading: "Tasks",
       add_task_button: "+ Add Task",
       task_input_placeholder: "What are you working on?",
       tasks_empty: "No tasks yet.",
       shop_title: "Shop",
-      locked_hint: "Buy in the Bedroom Shop",
+      btn_pomodoro: "⏰ Pomodoro",
+      btn_shop: "🛒 Shop",
+      btn_room: "🏡 Room",
     },
     ja: {
       start_subtitle: "デスクトップに住む小さな友達",
@@ -47,13 +50,16 @@
       start_timer_button: "スタート",
       pause_timer_button: "一時停止",
       minutes_unit: "分",
+      seconds_unit: "秒",
       save_button: "保存",
       tasks_heading: "タスク",
       add_task_button: "+ タスク追加",
       task_input_placeholder: "何に取り組みますか？",
       tasks_empty: "タスクはまだありません。",
       shop_title: "ショップ",
-      locked_hint: "寝室のショップで購入",
+      btn_pomodoro: "⏰ ポモドーロ",
+      btn_shop: "🛒 ショップ",
+      btn_room: "🏡 部屋",
     },
     ko: {
       start_subtitle: "데스크톱에 사는 작은 친구",
@@ -72,13 +78,16 @@
       start_timer_button: "시작",
       pause_timer_button: "일시정지",
       minutes_unit: "분",
+      seconds_unit: "초",
       save_button: "저장",
       tasks_heading: "할 일",
       add_task_button: "+ 할 일 추가",
       task_input_placeholder: "무엇을 할까요?",
       tasks_empty: "아직 할 일이 없어요.",
       shop_title: "상점",
-      locked_hint: "침실 상점에서 구매",
+      btn_pomodoro: "⏰ 뽀모도로",
+      btn_shop: "🛒 상점",
+      btn_room: "🏡 방",
     },
   };
 
@@ -102,11 +111,8 @@
     pomodoro: document.getElementById("screen-pomodoro"),
   };
   const charCards = document.querySelectorAll("#screen-select .char-card");
-  const selectConfirmBtn = document.getElementById("select-confirm");
   const langButtons = document.querySelectorAll(".lang-btn");
   const petNameEl = document.getElementById("room-pet-name");
-
-  const ECONOMY_KEY = "tama-economy";
 
   const modeTabs = document.querySelectorAll(".mode-tab");
   const timerDisplay = document.getElementById("timer-display");
@@ -114,7 +120,10 @@
   const timerReset = document.getElementById("timer-reset");
   const durationEditBtn = document.getElementById("duration-edit-btn");
   const durationEditor = document.getElementById("duration-editor");
-  const durationInputs = { pomodoro: document.getElementById("duration-pomodoro"), break: document.getElementById("duration-break") };
+  const durationInputs = {
+    pomodoro: { min: document.getElementById("duration-pomodoro-min"), sec: document.getElementById("duration-pomodoro-sec") },
+    break: { min: document.getElementById("duration-break-min"), sec: document.getElementById("duration-break-sec") },
+  };
   const durationSaveBtn = document.getElementById("duration-save");
   const taskList = document.getElementById("task-list");
   const taskAddBtn = document.getElementById("task-add");
@@ -125,45 +134,9 @@
 
   let lang = "ja";
   let selectedChar = "pink";
-  let ownedCharacters = ["pink"];
   let tasks = [];
   let addingTask = false;
   let pomodoro;
-
-  // Side-effect-free: reads which characters are unlocked without mutating
-  // anything, so it's safe to call just to refresh the Select screen's lock UI.
-  function readOwnedCharacters() {
-    let saved = null;
-    try {
-      saved = JSON.parse(localStorage.getItem(ECONOMY_KEY));
-    } catch {
-      saved = null;
-    }
-    return new NS.Economy(saved).ownedCharacters;
-  }
-
-  // Ownership can change mid-session (buying a character in the Bedroom Shop
-  // without leaving the Room first), so this is re-read fresh every time the
-  // Select screen is (re)shown, not cached from boot.
-  function refreshCharacterLocks() {
-    ownedCharacters = readOwnedCharacters();
-    charCards.forEach((c) => {
-      const char = c.dataset.char;
-      const owned = ownedCharacters.includes(char);
-      c.classList.toggle("locked", !owned);
-      const priceEl = c.querySelector(".lock-price");
-      if (priceEl) {
-        const price = NS.Economy.CATALOG.characters[char]?.price ?? 0;
-        priceEl.textContent = price + " 🪙";
-      }
-      c.title = owned ? "" : translations[lang]?.locked_hint || "";
-    });
-    updateConfirmState();
-  }
-
-  function updateConfirmState() {
-    selectConfirmBtn.disabled = !ownedCharacters.includes(selectedChar);
-  }
 
   function showScreen(name) {
     for (const [key, el] of Object.entries(screens)) {
@@ -183,17 +156,14 @@
     NS.Room.setLanguage(next);
     chrome.storage.local.set({ language: next });
     // Dynamic labels that a static data-i18n sweep can't reach: the empty-tasks
-    // message, the Start/Pause label (depends on run state), and the locked-
-    // character hint (not a data-i18n element, it's set as a `title` attribute).
+    // message and the Start/Pause label, which depends on run state.
     renderTasks();
     updateTimerButton();
-    refreshCharacterLocks();
   }
 
   function selectCard(char) {
     selectedChar = char;
     charCards.forEach((c) => c.classList.toggle("selected", c.dataset.char === char));
-    updateConfirmState();
   }
 
   function nameFor(char) {
@@ -338,8 +308,11 @@
 
   function openDurationEditor() {
     if (pomodoro.running) return;
-    durationInputs.pomodoro.value = Math.round(pomodoro.durations.pomodoro / 60);
-    durationInputs.break.value = Math.round(pomodoro.durations.break / 60);
+    for (const mode of Object.keys(durationInputs)) {
+      const total = pomodoro.durations[mode];
+      durationInputs[mode].min.value = Math.floor(total / 60);
+      durationInputs[mode].sec.value = total % 60;
+    }
     durationEditor.hidden = false;
   }
 
@@ -349,8 +322,10 @@
 
   function saveDurations() {
     for (const mode of Object.keys(durationInputs)) {
-      const minutes = Number(durationInputs[mode].value);
-      if (Number.isFinite(minutes) && minutes > 0) pomodoro.setDuration(mode, minutes);
+      const minutes = Number(durationInputs[mode].min.value) || 0;
+      const seconds = Number(durationInputs[mode].sec.value) || 0;
+      const total = minutes * 60 + seconds;
+      if (total > 0) pomodoro.setDuration(mode, total);
     }
     persistPomodoro();
     updateTimerDisplay();
@@ -375,8 +350,7 @@
 
   charCards.forEach((card) => card.addEventListener("click", () => selectCard(card.dataset.char)));
 
-  selectConfirmBtn.addEventListener("click", async () => {
-    if (!ownedCharacters.includes(selectedChar)) return; // guarded by disabled state too
+  document.getElementById("select-confirm").addEventListener("click", async () => {
     await chrome.storage.local.set({ character: selectedChar });
     petNameEl.textContent = nameFor(selectedChar);
     showScreen("room"); // show first so the stage has real dimensions
@@ -385,7 +359,6 @@
 
   document.getElementById("room-back").addEventListener("click", () => {
     NS.Room.stop();
-    refreshCharacterLocks();
     selectCard(selectedChar);
     showScreen("select");
   });
@@ -396,13 +369,8 @@
 
   // Opening Pomodoro does NOT stop the room — the pet keeps running underneath
   // (hidden but alive) so stats keep ticking and it can still react to the alarm.
-  // Two entry points share this: the topbar's ⏰ shortcut, and the "Alarm" action
-  // button that appears in the Field Swiper's per-field button groups (this is
-  // the real implementation behind what was a "Under Construction" stub).
-  document.getElementById("room-pomodoro").addEventListener("click", () => {
-    showScreen("pomodoro");
-  });
-  document.querySelectorAll('[data-action="alarm"]').forEach((btn) =>
+  // The bottom dock's "Pomodoro" action button is the sole entry point to it.
+  document.querySelectorAll('[data-action="pomodoro"]').forEach((btn) =>
     btn.addEventListener("click", () => showScreen("pomodoro"))
   );
   document.getElementById("pomodoro-back").addEventListener("click", () => {
@@ -458,13 +426,13 @@
     loadPomodoro();
 
     const saved = await chrome.storage.local.get(["language", "character"]);
-    applyLanguage(saved.language || "ja"); // also calls refreshCharacterLocks()
+    applyLanguage(saved.language || "ja");
 
-    // A character already chosen (and still owned) skips Start/Select entirely
-    // and jumps straight into the Room — character selection is a one-time
-    // choice; the topbar's "‹" back button is the only way to return to Select
-    // afterward (to switch to another owned character, or preview a locked one).
-    if (saved.character && ownedCharacters.includes(saved.character)) {
+    // A character already chosen skips Start/Select entirely and jumps straight
+    // into the Room — character selection is a one-time choice; the topbar's
+    // "‹" back button is the only way to return to Select afterward (to switch
+    // to a different character — all three are freely playable).
+    if (saved.character && Array.from(charCards).some((c) => c.dataset.char === saved.character)) {
       selectedChar = saved.character;
       charCards.forEach((c) => c.classList.toggle("selected", c.dataset.char === selectedChar));
       petNameEl.textContent = nameFor(selectedChar);
