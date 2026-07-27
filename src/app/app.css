@@ -75,13 +75,13 @@ html[lang="ko"] .pixel-display,
 html[lang="ko"] #coin-count,
 html[lang="ko"] #shop-coin-count { font-size: 10px; }
 
-/* --- phone-frame scale wrapper: the app is authored at a fixed 390x844
-   (iPhone 12/13/14 logical size); this scales that fixed frame to fit
-   whatever the real window size is, rather than rewriting every fixed-px
-   rule below to relative units. app.js sets the transform's scale. --------- */
+/* --- frame scale wrapper: the app is authored at a fixed 520x650 (shorter,
+   iPad-like proportions rather than a tall phone); this scales that fixed
+   frame to fit whatever the real window size is, rather than rewriting every
+   fixed-px rule below to relative units. app.js sets the transform's scale. */
 #app-scale {
-  width: 390px;
-  height: 844px;
+  width: 520px;
+  height: 650px;
   position: relative;
   background: var(--bg-primary);
   transform-origin: center center;

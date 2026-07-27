@@ -45,14 +45,14 @@ const sharedWebPreferences = () => ({
 // Room flow (src/app/). Opened on launch.
 function createAppWindow() {
   win = new BrowserWindow({
-    width: 390,
-    height: 844,
-    minWidth: 260,
-    minHeight: 562,
+    width: 520,
+    height: 650,
+    minWidth: 340,
+    minHeight: 425,
     title: "Tamagotchi",
     webPreferences: sharedWebPreferences(),
   });
-  win.setAspectRatio(390 / 844); // always phone-shaped; app.css scales its content to fit
+  win.setAspectRatio(520 / 650); // iPad-like, shorter & wider than the old phone ratio; app.css scales its content to fit
 
   // Clear cache to force reload modified asset images
   win.webContents.session.clearCache().finally(() => {

@@ -91,11 +91,11 @@
     },
   };
 
-  // The app is authored at a fixed 390x844 (iPhone 12/13/14 logical size); scale
-  // that fixed frame to fit the real window rather than rewriting app.css's
-  // fixed-px layout to relative units.
-  const APP_WIDTH = 390;
-  const APP_HEIGHT = 844;
+  // The app is authored at a fixed 520x650 (shorter, iPad-like proportions);
+  // scale that fixed frame to fit the real window rather than rewriting
+  // app.css's fixed-px layout to relative units.
+  const APP_WIDTH = 520;
+  const APP_HEIGHT = 650;
   const appScaleEl = document.getElementById("app-scale");
   function applyAppScale() {
     const scale = Math.min(window.innerWidth / APP_WIDTH, window.innerHeight / APP_HEIGHT);
