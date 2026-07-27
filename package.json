@@ -6,6 +6,7 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node --test src/app/*.test.js",
     "package": "electron-packager . Tamagotchi --platform=darwin --arch=arm64 --icon=assets/icon.icns --overwrite"
   },
   "devDependencies": {

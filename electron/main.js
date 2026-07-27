@@ -45,14 +45,15 @@ const sharedWebPreferences = () => ({
 // Room flow (src/app/). Opened on launch.
 function createAppWindow() {
   win = new BrowserWindow({
-    width: 420,
-    height: 720,
-    minWidth: 380,
-    minHeight: 600,
+    width: 390,
+    height: 844,
+    minWidth: 260,
+    minHeight: 562,
     title: "Tamagotchi",
     webPreferences: sharedWebPreferences(),
   });
-  
+  win.setAspectRatio(390 / 844); // always phone-shaped; app.css scales its content to fit
+
   // Clear cache to force reload modified asset images
   win.webContents.session.clearCache().finally(() => {
     win.loadFile(path.join(APP_ROOT, "src/app/index.html"));
@@ -290,9 +291,18 @@ function maybeRunSmoke() {
   const wc = win.webContents;
   const js = (expr) => wc.executeJavaScript(expr);
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const screenshotErrors = [];
+  // capturePage() can throw (e.g. "UnknownVizError") if the GPU compositor isn't
+  // settled yet — most likely right after a wc.reload(). Screenshots are a
+  // diagnostic nicety, not a correctness assertion, so a failure here must not
+  // abort the whole drive() flow the way an uncaught throw would.
   const shot = async (name) => {
-    const img = await wc.capturePage();
-    fs.writeFileSync(path.join(outDir, name), img.toPNG());
+    try {
+      const img = await wc.capturePage();
+      fs.writeFileSync(path.join(outDir, name), img.toPNG());
+    } catch (e) {
+      screenshotErrors.push(name + ": " + e.message);
+    }
   };
 
   wc.once("did-finish-load", () => {
@@ -317,38 +327,73 @@ function maybeRunSmoke() {
         await cdpMouse("mouseMoved", toRect.x, toRect.y, { buttons: 1 });
         await cdpMouse("mouseReleased", toRect.x, toRect.y);
       };
+      const centerOf = (selector) => js(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+        return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
+      const waitForLoad = () => new Promise((resolve) => wc.once("did-finish-load", resolve));
+      // Balls genuinely free-fall under gravity, unlike the static tray items —
+      // reading a position then acting on it a round-trip later can miss a
+      // still-moving ball entirely. Poll until it reports the same spot twice in
+      // a row (i.e., actually "shelved", not mid-bounce) before acting on it.
+      const waitUntilStationary = async (selector, maxAttempts = 15) => {
+        let last = null;
+        for (let i = 0; i < maxAttempts; i++) {
+          const rect = await centerOf(selector);
+          if (last && rect.x === last.x && rect.y === last.y) return rect;
+          last = rect;
+          await wait(100);
+        }
+        return last;
+      };
 
       try {
-        // Start → Select
+        // --- First-ever boot: no character chosen yet → Start, then Select ------
         await shot("app-start.png");
+        report.startActiveOnBoot = await js(`document.getElementById('screen-start').classList.contains('active')`);
         await js(`document.getElementById('start-btn').click()`);
         await wait(300);
         report.selectCards = await js(`document.querySelectorAll('#screen-select .char-card').length`);
         await shot("app-select.png");
 
-        // Seed a hungry, slightly-hurt pet + a starter coin balance so drag actions
-        // produce a visible change without waiting for real spawn timers.
-        await js(`localStorage.setItem('tama-stats', JSON.stringify({ hp: 80, satiety: 20, lastSeen: Date.now() }))`);
-        await js(`localStorage.setItem('tama-economy', JSON.stringify({ coins: 300 }))`);
+        // --- Boot-skip regression: a previously-chosen (owned) character should
+        // skip Start/Select entirely on the next launch. This is the exact area
+        // this session's original bug lived in (character appearing to die
+        // instantly right after selection, traced to a stale global stats key) —
+        // now re-verified end to end via a real reload, not just inspection. -----
+        changeSettings({ character: "pink" }); // main-process settings, not chrome.storage
+        const reload1 = waitForLoad();
+        wc.reload();
+        await reload1;
+        await wait(1000);
+        report.bootSkipToRoom = await js(`({
+          roomActive: document.getElementById('screen-room').classList.contains('active'),
+          startActive: document.getElementById('screen-start').classList.contains('active'),
+        })`);
+
+        // Seed a hungry, slightly-hurt Pink + a starter coin balance + Owlet
+        // ownership (for the later per-character stats isolation test) so drag
+        // actions produce a visible change without waiting for real spawn timers.
+        await js(`document.getElementById('room-back').click()`);
+        await wait(150);
+        await js(`localStorage.setItem('tama-stats:pink', JSON.stringify({ hp: 80, satiety: 20, lastSeen: Date.now() }))`);
+        await js(`localStorage.setItem('tama-economy', JSON.stringify({
+          coins: 1200, ownedCharacters: ['pink', 'owlet'],
+        }))`);
         // Shrinks the coin-spawn wait to its real floor (still real time, not
         // eliminated — production spawn cadence is untouched) by removing
-        // Math.random()'s jitter component; other randomness (wander, phrases)
-        // just becomes deterministic for this run, which is harmless.
+        // Math.random()'s jitter component; other randomness (wander, phrases,
+        // ball-launch direction/speed) just becomes deterministic for this run.
         await js(`Math.random = () => 0; void 0;`); // assignment exprs return the fn — not cloneable over IPC
 
-        const centerOf = (selector) => js(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
-          return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
-
-        // Select owlet → Room
         const roomEntryTime = Date.now();
-        await js(`document.querySelector('.char-card[data-char="owlet"]').click();
+        await js(`document.querySelector('.char-card[data-char="pink"]').click();
                   document.getElementById('select-confirm').click()`);
         await wait(1500); // stage lays out, pet spawns, first battery poll
         await shot("app-room.png");
 
         // Directly verify the game loop is actually alive: sample the pet's
         // transform and stat bars over real time. This is the exact thing the
-        // user reported broken ("character stuck and not moving").
+        // user reported broken ("character stuck and not moving") earlier in
+        // this session.
         const sampleMovement = async () => ({
           transform: await js(`document.getElementById('pet').style.transform`),
           satiety: await js(`document.getElementById('fill-satiety').style.width`),
@@ -369,18 +414,20 @@ function maybeRunSmoke() {
                    stamVal: document.getElementById('val-stamina').textContent }; })()`);
         report.coinBadge = await js(`document.getElementById('coin-count').textContent`);
 
-        // Basic Field is a toy-type room — the tray should offer the free Ball.
-        report.trayInBasic = await js(
+        // Kitchen is the default room — the tray should offer at least free Kibble.
+        report.trayInKitchen = await js(
           `Array.from(document.querySelectorAll('#item-tray .tray-item')).map((el) => el.textContent.trim())`
         );
 
-        // Drag the Ball onto the pet → Play effect (Satiety drops, +3 coins, reaction).
+        // Drag Kibble onto the pet → Feed effect (Satiety rises, +2 coins, a
+        // floating "+N" coin popup alongside the reaction emoji/bubble).
         await dragItem(await centerOf("#item-tray .tray-item"), await centerOf("#pet"));
         await wait(200);
-        report.afterPlayDrag = await js(`({
+        report.afterFeedDrag = await js(`({
           satiety: document.getElementById('fill-satiety').style.width,
           coins: document.getElementById('coin-count').textContent,
           bubble: document.getElementById('bubble').textContent,
+          coinFx: !!document.querySelector('.fx-coin'),
         })`);
 
         // Drag a tray item and drop it far from the pet → should snap back, no effect.
@@ -400,40 +447,248 @@ function maybeRunSmoke() {
         report.pokeBubble = await js(`({ visible: document.getElementById('bubble').classList.contains('visible'),
           text: document.getElementById('bubble').textContent })`);
 
-        // The rock: present, positioned at the stage's left edge (placeRock(0) on
-        // room start), and pointed at the current character's rock.png.
-        report.rock = await js(`(() => {
-          const r = document.getElementById('rock');
-          const cs = getComputedStyle(r);
-          return { bg: cs.backgroundImage, transform: cs.transform };
+        // A reusable "buy whichever unowned card comes first" helper — shop
+        // cards are re-queried after every click (renderShop() rebuilds the grid),
+        // and clicking an already-"Owned"/disabled button is a genuine DOM no-op,
+        // so tests must target a still-purchasable card rather than just "the
+        // first card", or a repeat click silently buys nothing.
+        const buyFirstUnowned = () => js(`(() => {
+          const cards = Array.from(document.querySelectorAll('#shop-grid .shop-item'));
+          const target = cards.find((c) => {
+            const btn = c.querySelector('button');
+            return !btn.disabled && !btn.classList.contains('owned');
+          });
+          if (!target) return null;
+          const name = target.querySelector('.shop-item-name').textContent;
+          target.querySelector('button').click();
+          return { name, ownedNow: target.querySelector('button').textContent };
         })()`);
 
-        // --- Cycle rooms: Basic → Game → Kitchen. Kitchen swaps the tray to food. ---
-        await js(`document.getElementById('swiper-next').click()`); // → Game
+        // --- Kitchen shop: drinks / sweets / meals / backgrounds tabs -------------
+        await js(`document.querySelector('.actions-group.active [data-action="shop"]').click()`);
         await wait(150);
-        report.roomGame = await js(`document.getElementById('swiper-label').textContent`);
-        await js(`document.getElementById('swiper-next').click()`); // → Kitchen
+        report.kitchenShopTabs = await js(`Array.from(document.querySelectorAll('.shop-tab')).map((t) => t.textContent)`);
+        await shot("app-shop-kitchen.png");
+        // Default tab is "meals" (SHOP_TABS order) — switch to sweets before buying.
+        await js(`Array.from(document.querySelectorAll('.shop-tab')).find((t) => t.textContent.includes('Sweets') || t.textContent.includes('スイーツ') || t.textContent.includes('디저트')).click()`);
+        await wait(100);
+        report.buySweet = await buyFirstUnowned();
+        report.shopCoinsAfterSweetBuy = await js(`document.getElementById('shop-coin-count').textContent`);
+        await js(`document.querySelector('.actions-group.active [data-action="field"]').click()`);
         await wait(150);
-        report.roomKitchen = await js(`document.getElementById('swiper-label').textContent`);
-        report.trayInKitchen = await js(
+        report.kitchenTrayAfterFoodBuy = await js(
           `Array.from(document.querySelectorAll('#item-tray .tray-item')).map((el) => el.textContent.trim())`
         );
-        await shot("app-room-kitchen.png");
 
-        // Drag the free Kibble onto the pet in the Kitchen → Feed effect.
-        const satietyBeforeFeed = await js(`document.getElementById('fill-satiety').style.width`);
-        await dragItem(await centerOf("#item-tray .tray-item"), await centerOf("#pet"));
-        await wait(200);
-        report.afterFeedDrag = {
-          satietyBefore: satietyBeforeFeed,
-          satietyAfter: await js(`document.getElementById('fill-satiety').style.width`),
-          coins: await js(`document.getElementById('coin-count').textContent`),
-        };
+        // --- Cycle rooms: Kitchen → Game Room → Bedroom → Kitchen. Exactly one of
+        // the tray / ball shelf / mic panel should be visible at a time. ----------
+        await js(`document.getElementById('swiper-next').click()`); // → Game Room
+        await wait(300);
+        report.roomGame = await js(`document.getElementById('swiper-label').textContent`);
+        report.gameRoomPanels = await js(`({
+          trayHidden: getComputedStyle(document.getElementById('item-tray')).display === 'none',
+          ballCount: document.querySelectorAll('.ball-sprite').length,
+          lockedBallCount: document.querySelectorAll('.ball-sprite.locked').length,
+        })`);
+        await shot("app-room-gameroom.png");
 
-        await js(`document.getElementById('swiper-prev').click()`); // → back to Game (a Field room)
+        await js(`document.getElementById('swiper-next').click()`); // → Bedroom
+        await wait(150);
+        report.roomBedroom = await js(`document.getElementById('swiper-label').textContent`);
+        report.bedroomPanels = await js(`({
+          micVisible: getComputedStyle(document.getElementById('mic-panel')).display !== 'none',
+          trayHidden: getComputedStyle(document.getElementById('item-tray')).display === 'none',
+          ballLayerEmpty: document.querySelectorAll('.ball-sprite').length === 0,
+        })`);
+        await shot("app-room-bedroom.png");
+
+        // --- Bedroom mic: monkey-patch getUserMedia with a real (silent-content)
+        // WebAudio-generated MediaStream — MediaRecorder can genuinely record and
+        // decodeAudioData can genuinely decode this, unlike a bare mock stream, so
+        // this exercises the actual record → stop → decode → pitch-shift →
+        // "talking" pipeline without needing real microphone hardware/permission
+        // (which the CDP harness can't grant in a headless run anyway). ----------
+        await js(`(() => {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const dest = ctx.createMediaStreamDestination();
+          const osc = ctx.createOscillator();
+          osc.connect(dest);
+          osc.start();
+          window.__smokeAudio = { ctx, dest, osc };
+          navigator.mediaDevices.getUserMedia = async () => dest.stream;
+        })()`);
+        await js(`document.getElementById('mic-btn').click()`); // start recording
+        await wait(150);
+        report.micRecording = await js(`document.getElementById('mic-btn').classList.contains('recording')`);
+        await wait(1000);
+        await js(`document.getElementById('mic-btn').click()`); // stop → decode → pitched playback
+        // The pitch-shifted (1.6x) playback of a ~1s recording lasts well under a
+        // second, so poll rather than guess a single fixed snapshot time.
+        let talkingWasSeen = false;
+        for (let i = 0; i < 20 && !talkingWasSeen; i++) {
+          await wait(100);
+          talkingWasSeen = await js(`document.getElementById('pet').classList.contains('talking')`);
+        }
+        await wait(800); // outlast the short playback so the class clears again
+        report.micAfterStop = await js(`({
+          recordingClassCleared: !document.getElementById('mic-btn').classList.contains('recording'),
+        })`);
+        report.micAfterStop.talkingWasSeenDuringPlayback = talkingWasSeen;
+        report.micAfterStop.talkingClearedAfter = !(await js(`document.getElementById('pet').classList.contains('talking')`));
+
+        await js(`document.getElementById('swiper-prev').click()`); // → back to Game Room
         await wait(150);
 
-        // --- Coin/poop spawn: real-time wait at the (jitter-removed) 25s floor ----
+        // --- Game Room shop: buy two genuinely-locked balls, then interact with
+        // the shelf via tap-to-shelve and drag-onto-pet. -------------------------
+        await js(`document.querySelector('.actions-group.active [data-action="shop"]').click()`);
+        await wait(150);
+        report.shopView = await js(`({
+          shopVisible: getComputedStyle(document.getElementById('shop-view')).display !== 'none',
+          stageHidden: getComputedStyle(document.getElementById('stage')).display === 'none',
+          tabs: Array.from(document.querySelectorAll('.shop-tab')).map((t) => t.textContent),
+        })`);
+        await shot("app-shop-balls.png");
+
+        report.buyBall1 = await buyFirstUnowned();
+        report.buyBall2 = await buyFirstUnowned();
+        report.shopCoinsAfterBallBuys = await js(`document.getElementById('shop-coin-count').textContent`);
+
+        // Game Room's Backgrounds tab: buy-and-equip, then switch back to Default.
+        await js(`Array.from(document.querySelectorAll('.shop-tab')).find((t) => t.textContent.includes('Backgrounds') || t.textContent.includes('背景') || t.textContent.includes('배경')).click()`);
+        await wait(100);
+        await shot("app-shop-backgrounds.png");
+        report.buyBackground = await js(`(() => {
+          const cards = document.querySelectorAll('#shop-grid .shop-item');
+          const purchasable = cards[1]; // cards[0] is the always-owned "Default" card
+          purchasable.querySelector('button').click();
+          return purchasable.querySelector('button').textContent;
+        })()`);
+        report.stageBgAfterBuy = await js(`getComputedStyle(document.getElementById('stage')).backgroundImage`);
+        report.revertToDefaultBackground = await js(`(() => {
+          document.querySelectorAll('#shop-grid .shop-item')[0].querySelector('button').click();
+          return true;
+        })()`);
+        report.stageBgAfterRevert = await js(`getComputedStyle(document.getElementById('stage')).backgroundImage`);
+
+        await js(`document.querySelector('.actions-group.active [data-action="field"]').click()`);
+        await wait(200);
+        report.backFromShop = await js(`getComputedStyle(document.getElementById('stage')).display !== 'none'`);
+
+        // --- Ball shelf: tap a bouncing ball to shelve it, then drag the now-
+        // stationary ball onto the pet (Play effect) and confirm a locked ball is
+        // inert. --------------------------------------------------------------
+        const settledBall = await waitUntilStationary(".ball-sprite:not(.locked)");
+        await click(settledBall.x, settledBall.y); // tap → sends it home to the shelf
+        const shelvedBall = await waitUntilStationary(".ball-sprite:not(.locked)");
+        const coinsBeforeBallPlay = await js(`document.getElementById('coin-count').textContent`);
+        await dragItem(shelvedBall, await centerOf("#pet"));
+        await wait(200);
+        report.afterBallPlayDrag = await js(`({
+          coinsBefore: ${JSON.stringify(coinsBeforeBallPlay)},
+          coinsAfter: document.getElementById('coin-count').textContent,
+          bubble: document.getElementById('bubble').textContent,
+          coinFx: !!document.querySelector('.fx-coin'),
+        })`);
+
+        const lockedBall = await centerOf(".ball-sprite.locked");
+        await click(lockedBall.x, lockedBall.y);
+        await wait(150);
+        report.lockedBallHint = await js(`document.getElementById('bubble').textContent`);
+
+        // --- Bedroom shop: Characters tab (Owlet already owned via seed, Dude is
+        // not) + Backgrounds tab. -------------------------------------------------
+        await js(`document.getElementById('swiper-next').click()`); // → Bedroom
+        await wait(150);
+        await js(`document.querySelector('.actions-group.active [data-action="shop"]').click()`);
+        await wait(150);
+        // shopCategory persists across shop visits and "backgrounds" is a valid
+        // tab in every room, so it can carry over from the Game Room visit above
+        // instead of defaulting to Bedroom's other tab — select Characters explicitly.
+        await js(`Array.from(document.querySelectorAll('.shop-tab')).find((t) => t.textContent.includes('Characters') || t.textContent.includes('キャラクター') || t.textContent.includes('캐릭터')).click()`);
+        await wait(100);
+        await shot("app-shop-characters.png");
+        // room.js's buy handler calls renderShop(), rebuilding the whole grid —
+        // the pre-click "dude" reference goes stale/detached once clicked, so
+        // "after" must be re-queried fresh rather than read off the old node.
+        const findDudeCard = () => js(`(() => {
+          const cards = Array.from(document.querySelectorAll('#shop-grid .shop-item'));
+          const dude = cards.find((c) => c.querySelector('.shop-item-name').textContent.includes('Dud')
+            || c.querySelector('.shop-item-name').textContent.includes('デュ')
+            || c.querySelector('.shop-item-name').textContent.includes('듀'));
+          return dude.querySelector('button').textContent;
+        })()`);
+        const dudeBefore = await findDudeCard();
+        await js(`(() => {
+          const cards = Array.from(document.querySelectorAll('#shop-grid .shop-item'));
+          const dude = cards.find((c) => c.querySelector('.shop-item-name').textContent.includes('Dud')
+            || c.querySelector('.shop-item-name').textContent.includes('デュ')
+            || c.querySelector('.shop-item-name').textContent.includes('듀'));
+          dude.querySelector('button').click();
+        })()`);
+        report.buyCharacter = { before: dudeBefore, after: await findDudeCard() };
+        await js(`document.querySelector('.actions-group.active [data-action="field"]').click()`);
+        await wait(150);
+
+        // --- Character switch + per-character stats isolation: this is the core
+        // regression test for this session's original bug (a stale global stats
+        // key made a freshly-picked character appear to die instantly). Pink was
+        // seeded hungry/hurt above; Owlet must come up completely fresh. ---------
+        await js(`document.getElementById('room-back').click()`);
+        await wait(150);
+        report.selectLocksAfterPurchases = await js(`({
+          owletLocked: document.querySelector('.char-card[data-char="owlet"]').classList.contains('locked'),
+          dudeLocked: document.querySelector('.char-card[data-char="dude"]').classList.contains('locked'),
+        })`);
+        await js(`document.querySelector('.char-card[data-char="owlet"]').click();
+                  document.getElementById('select-confirm').click()`);
+        await wait(500);
+        report.owletFreshStats = await js(`({
+          hp: document.getElementById('fill-hp').style.width,
+          satiety: document.getElementById('fill-satiety').style.width,
+          gameOverVisible: !document.getElementById('gameover').hidden,
+        })`);
+
+        // Death + revive: re-enter with Owlet's HP already at 0 (the offline-decay
+        // dead-on-load path) and confirm the game-over overlay + death pose appear,
+        // and that the item-tray is cleared while fainted.
+        await js(`document.getElementById('room-back').click()`);
+        await wait(150);
+        await js(`localStorage.setItem('tama-stats:owlet', JSON.stringify({ hp: 0, satiety: 0, lastSeen: Date.now() }))`);
+        await js(`document.querySelector('.char-card[data-char="owlet"]').click();
+                  document.getElementById('select-confirm').click()`);
+        await wait(400);
+        report.gameOverOnLoad = await js(`({
+          overlayHidden: document.getElementById('gameover').hidden,
+          trayEmpty: document.querySelectorAll('#item-tray .tray-item').length === 0,
+          spriteAnim: getComputedStyle(document.getElementById('pet')).backgroundImage.includes('death'),
+        })`);
+        await shot("app-gameover.png");
+
+        await js(`document.getElementById('btn-revive').click()`);
+        await wait(300);
+        // Which bottom panel repopulates after revive depends on the current
+        // room's type (only Kitchen shows a food tray; Bedroom shows the mic
+        // instead) — check whichever one actually applies rather than assuming Kitchen.
+        report.afterRevive = await js(`({
+          overlayHidden: document.getElementById('gameover').hidden,
+          hpWidth: document.getElementById('fill-hp').style.width,
+          panelRestored: document.getElementById('swiper-label').textContent.includes('キッチン')
+            || document.getElementById('swiper-label').textContent.includes('Kitchen')
+            || document.getElementById('swiper-label').textContent.includes('주방')
+            ? document.querySelectorAll('#item-tray .tray-item').length > 0
+            : true,
+        })`);
+
+        // --- Coin/poop spawn (Game Room only): real-time wait at the (jitter-
+        // removed) 25s floor. Room order is Kitchen → Game Room → Bedroom, cycling
+        // "next" until the Game Room's ball layer is the one showing. -------------
+        for (let i = 0; i < 3 && (await js(`document.querySelectorAll('.ball-sprite').length`)) === 0; i++) {
+          await js(`document.getElementById('swiper-next').click()`);
+          await wait(150);
+        }
+        report.roomForSpawnTest = await js(`document.getElementById('swiper-label').textContent`);
+
         report.elapsedBeforeCoinWait = Date.now() - roomEntryTime;
         let pickupKind = null;
         const spawnDeadline = Date.now() + 45_000;
@@ -456,84 +711,10 @@ function maybeRunSmoke() {
             coinsBefore,
             coinsAfter: await js(`document.getElementById('coin-count').textContent`),
             pickupGone: await js(`!document.querySelector(${JSON.stringify(selector)})`),
+            coinFx: await js(`!!document.querySelector('.fx-coin')`),
           };
         }
         await shot("app-room-coinpickup.png");
-
-        // --- Shop: buy a food, a toy, and a room ------------------------------------
-        await js(`document.querySelector('.actions-group.active [data-action="shop"]').click()`);
-        await wait(150);
-        report.shopView = await js(`({
-          shopVisible: getComputedStyle(document.getElementById('shop-view')).display !== 'none',
-          stageHidden: getComputedStyle(document.getElementById('stage')).display === 'none',
-        })`);
-        await shot("app-shop-food.png");
-
-        // Note: room.js's buy handler calls renderShop(), which rebuilds the whole
-        // grid — so the button/card must be re-queried *after* the click rather
-        // than reusing the pre-click reference, which would be stale/detached.
-        report.buyFood = await js(`(() => {
-          const before = document.querySelector('#shop-grid .shop-item');
-          const name = before.querySelector('.shop-item-name').textContent;
-          before.querySelector('button').click();
-          const after = document.querySelector('#shop-grid .shop-item');
-          return { name, qtyAfter: after.querySelector('.shop-item-qty').textContent };
-        })()`);
-        report.shopCoinsAfterFoodBuy = await js(`document.getElementById('shop-coin-count').textContent`);
-
-        await js(`document.querySelector('.shop-tab[data-category="toys"]').click()`);
-        await wait(100);
-        await shot("app-shop-toys.png");
-        report.buyToy = await js(`(() => {
-          document.querySelector('#shop-grid .shop-item button').click();
-          return document.querySelector('#shop-grid .shop-item button').textContent;
-        })()`);
-
-        await js(`document.querySelector('.shop-tab[data-category="rooms"]').click()`);
-        await wait(100);
-        await shot("app-shop-rooms.png");
-        report.buyRoom = await js(`(() => {
-          document.querySelector('#shop-grid .shop-item button').click();
-          return document.querySelector('#shop-grid .shop-item button').textContent;
-        })()`);
-
-        await js(`document.querySelector('.actions-group.active [data-action="field"]').click()`);
-        await wait(200);
-        report.backFromShop = await js(`getComputedStyle(document.getElementById('stage')).display !== 'none'`);
-
-        // Cycle the swiper through every owned room, confirming the newly bought
-        // one now appears in the rotation with a real background applied.
-        const roomLabels = [];
-        for (let i = 0; i < 6; i++) {
-          roomLabels.push(await js(`document.getElementById('swiper-label').textContent`));
-          await js(`document.getElementById('swiper-next').click()`);
-          await wait(150);
-        }
-        report.roomCycle = roomLabels;
-
-        // Death + revive: re-enter the room with HP already at 0 (the offline-decay
-        // dead-on-load path) and confirm the game-over overlay + death pose appear,
-        // and that the item-tray is cleared while fainted.
-        await js(`document.getElementById('room-back').click()`); // → back to Select
-        await wait(150);
-        await js(`localStorage.setItem('tama-stats', JSON.stringify({ hp: 0, satiety: 0, lastSeen: Date.now() }))`);
-        await js(`document.querySelector('.char-card[data-char="pink"]').click();
-                  document.getElementById('select-confirm').click()`);
-        await wait(400);
-        report.gameOverOnLoad = await js(`({
-          overlayHidden: document.getElementById('gameover').hidden,
-          trayEmpty: document.querySelectorAll('#item-tray .tray-item').length === 0,
-          spriteAnim: getComputedStyle(document.getElementById('pet')).backgroundImage.includes('death'),
-        })`);
-        await shot("app-gameover.png");
-
-        await js(`document.getElementById('btn-revive').click()`);
-        await wait(300);
-        report.afterRevive = await js(`({
-          overlayHidden: document.getElementById('gameover').hidden,
-          trayRestored: document.querySelectorAll('#item-tray .tray-item').length > 0,
-          hpWidth: document.getElementById('fill-hp').style.width,
-        })`);
 
         // --- Pomodoro screen: navigate, tabs, task cap, alarm wiring, right-click ---
         await js(`document.getElementById('room-pomodoro').click()`);
@@ -651,6 +832,7 @@ function maybeRunSmoke() {
       report.battery = await readBattery();
       console.log("SMOKE report:", JSON.stringify(report));
       console.log("SMOKE console:", JSON.stringify(consoleMsgs));
+      console.log("SMOKE screenshotErrors:", JSON.stringify(screenshotErrors));
       console.log("SMOKE errors:", JSON.stringify(errors));
       app.exit(errors.length ? 1 : 0);
     }, 1500);

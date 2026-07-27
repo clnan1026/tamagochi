@@ -1,22 +1,21 @@
 // Pet Room controller — the Talking Tom-style screen. Wires the shared pet engine
-// (Sprite + Pet + input) to the 3 stat bars, drag-and-drop feeding/playing, the
-// coin economy, and the Shop. Exposed as window.__tamagotchi.Room; driven by app.js.
+// (Sprite + Pet + input) to the 3 stat bars, drag-and-drop feeding/playing/balls,
+// the coin economy, the Bedroom mic, and the Shop. Exposed as window.__tamagotchi.Room;
+// driven by app.js.
 (() => {
   const NS = (window.__tamagotchi ??= {});
   const Economy = NS.Economy; // loaded before room.js in index.html
 
   const SCALE = 2.2; // big focal pet: 32 * 2.2 = 70.4px
   const MAX_DT = 0.05;
-  const STATS_KEY = "tama-stats";
   const ECONOMY_KEY = "tama-economy";
   const BUBBLE_MS = 1600;
   const BATTERY_POLL_MS = 30_000;
   const PERSIST_MS = 5_000;
   const TIRED_COOLDOWN_MS = 7_000;
-  const ROCK_WIDTH = 48; // 16px sheet * 3
-  const PUSH_REACH = 14; // px of overlap before the pet starts pushing
 
-  // Coin popups and poop only spawn in Field-type rooms (not Kitchen), matching Pou.
+  // Coin popups and poop only spawn in the Game Room (the "field"-type room), not
+  // the Kitchen or Bedroom, matching Pou's field-vs-kitchen split.
   const COIN_SPAWN_MIN_MS = 25_000;
   const COIN_SPAWN_MAX_MS = 50_000;
   const COIN_LIFETIME_MS = 8_000;
@@ -28,6 +27,14 @@
   const POOP_REWARD_MIN = 10;
   const POOP_REWARD_MAX = 15;
   const DROP_HIT_MARGIN = 20; // px of forgiveness around the pet for drag-drop
+
+  const BALL_SIZE = 40;
+  const BALL_SHELF_MARGIN = 8;
+  const MAX_ACTIVE_BOUNCERS = 4;
+  const SHELF_HOLD_MS = 500; // how long a returned ball rests before bouncing again
+  const TAP_THRESHOLD_PX = 6;
+
+  const MIC_PITCH = 1.6; // classic Talking-Tom chipmunk playback rate
 
   const FEED_PHRASES = {
     en: ["Yum! 😋", "So good!", "More please~", "Nom nom"],
@@ -52,17 +59,45 @@
   const TASK_EMPTY = { en: "No tasks 🎉", ja: "タスクなし 🎉", ko: "할 일 없음 🎉" };
   const BUY_LABEL = { en: "Buy", ja: "購入", ko: "구매" };
   const OWNED_LABEL = { en: "Owned", ja: "所有済み", ko: "보유중" };
+  const EQUIP_LABEL = { en: "Equip", ja: "使用する", ko: "적용" };
+  const BALL_LOCKED_HINT = { en: "Buy me in the Shop! 🛒", ja: "ショップで買ってね！🛒", ko: "상점에서 구매하세요! 🛒" };
+  const MIC_DENIED = { en: "Mic access denied 🎤", ja: "マイクを使えません 🎤", ko: "마이크 접근 거부됨 🎤" };
   const TASKS_KEY = "tama-tasks"; // owned/written by app.js's Pomodoro screen; read fresh here
   const TASK_TAG_MS = 3000;
 
-  // No new scenery art exists — purchased rooms beyond the two original photo
-  // fields are CSS-gradient themes.
-  const ROOM_GRADIENTS = {
-    kitchen: "linear-gradient(#fff1e0, #ffcf9f 70%, #f4a460)",
-    sunset: "linear-gradient(#ff9a6c, #ff6f91 55%, #6a3093)",
-    midnight: "linear-gradient(#0f2027, #203a43, #2c5364)",
-    candy: "linear-gradient(#ffd1ff, #d9b8ff 55%, #fad0c4)",
+  // 3 fixed, always-free rooms. "type" drives which bottom panel shows (food tray,
+  // ball shelf, mic) and which room the coin/poop spawns are gated to ("field").
+  // Solid colors are the zero-cost default background; a room's optional picture
+  // background (bought in that room's Shop tab) overrides this — see applyRoomVisuals().
+  const ROOMS = {
+    kitchen: { id: "kitchen", type: "kitchen", bg: "#ffe9c7", names: { en: "Kitchen", ja: "キッチン", ko: "주방" } },
+    gameroom: { id: "gameroom", type: "field", bg: "#d6f5ff", names: { en: "Game Room", ja: "ゲームルーム", ko: "게임룸" } },
+    bedroom: { id: "bedroom", type: "bedroom", bg: "#e6dcff", names: { en: "Bedroom", ja: "寝室", ko: "침실" } },
   };
+  const ROOM_ORDER = ["kitchen", "gameroom", "bedroom"];
+
+  // Which shop tabs show up per room — each room's own goods, plus a shared
+  // Backgrounds tab (Bedroom has no good of its own, so it sells characters).
+  const SHOP_TABS = {
+    kitchen: ["drinks", "sweets", "meals", "backgrounds"],
+    gameroom: ["balls", "backgrounds"],
+    bedroom: ["characters", "backgrounds"],
+  };
+  const SHOP_TAB_LABELS = {
+    drinks: { en: "Drinks", ja: "ドリンク", ko: "음료" },
+    sweets: { en: "Sweets", ja: "スイーツ", ko: "디저트" },
+    meals: { en: "Meals", ja: "ごはん", ko: "식사" },
+    balls: { en: "Balls", ja: "ボール", ko: "공" },
+    characters: { en: "Characters", ja: "キャラクター", ko: "캐릭터" },
+    backgrounds: { en: "Backgrounds", ja: "背景", ko: "배경" },
+  };
+  const DEFAULT_BG_LABEL = { en: "Default", ja: "デフォルト", ko: "기본" };
+  const CHARACTER_NAMES = {
+    pink: { en: "Pinky", ja: "ピンキー", ko: "핑키" },
+    owlet: { en: "Owlet", ja: "アウレット", ko: "아울렛" },
+    dude: { en: "Dudy", ja: "デュディ", ko: "듀디" },
+  };
+  const CHARACTER_EMOJI = { pink: "🌸", owlet: "🦉", dude: "😎" };
 
   const pick = (dict, lang) => {
     const list = dict[lang] || dict.ja;
@@ -82,17 +117,26 @@
   let persistTimer = null;
   let tiredAt = 0;
   let bubbleTimer = null;
-  let rockX = 0; // px from the stage's left edge
   let wasAirborne = false;
-  let pushing = false;
   let taskTagTimer = null;
   let currentScreen = "room"; // "room" | "shop" — Room's own top-level sub-view.
   // "Alarm" is not one of these: it navigates away to the top-level Pomodoro
   // screen (see app.js), rather than being an in-room state like Shop is.
-  let shopCategory = "foods";
+  let shopCategory = "meals";
   let nextCoinAt = 0;
   let nextPoopAt = 0;
   let dragState = null; // { kind, item, originEl, ghost } while a tray item is being dragged
+  let balls = []; // Game Room ball-shelf/bounce state, see renderBallShelf()
+
+  // --- mic (Bedroom): Talking-Tom-style record + pitch-shifted playback --------
+  let micState = "idle";
+  let mediaRecorder = null;
+  let micChunks = [];
+  let micStream = null;
+
+  function statsKey() {
+    return `tama-stats:${character}`;
+  }
 
   function say(text) {
     els.bubble.textContent = text;
@@ -101,20 +145,30 @@
     bubbleTimer = setTimeout(() => els.bubble.classList.remove("visible"), BUBBLE_MS);
   }
 
-  function spawnFx(emoji) {
+  function spawnFx(content, opts = {}) {
+    const { coin = false, x, y } = opts;
     const fx = document.createElement("span");
-    fx.className = "fx";
-    fx.textContent = emoji;
-    fx.style.left = pet.x + sprite.size / 2 - 13 + "px";
-    fx.style.top = pet.y - 10 + "px";
+    fx.className = "fx" + (coin ? " fx-coin" : "");
+    fx.textContent = content;
+    fx.style.left = (x ?? pet.x + sprite.size / 2 - 13) + "px";
+    fx.style.top = (y ?? pet.y - 10) + "px";
     els.stage.appendChild(fx);
     setTimeout(() => fx.remove(), 900);
+  }
+
+  // Centralizes the add-coins + persist + re-render-badge + floating-feedback
+  // sequence that used to be duplicated across useFood/useToy/spawnPickup.
+  function awardCoins(amount, pos) {
+    economy.addCoins(amount);
+    persistEconomy();
+    renderCoinBadge();
+    spawnFx("+" + amount, { coin: true, x: pos?.x, y: pos?.y });
   }
 
   function loadStats() {
     let saved = null;
     try {
-      saved = JSON.parse(localStorage.getItem(STATS_KEY));
+      saved = JSON.parse(localStorage.getItem(statsKey()));
     } catch {
       saved = null;
     }
@@ -123,7 +177,7 @@
 
   function persist() {
     try {
-      localStorage.setItem(STATS_KEY, JSON.stringify(stats.snapshot()));
+      localStorage.setItem(statsKey(), JSON.stringify(stats.snapshot()));
     } catch {
       /* localStorage unavailable — stats stay session-only */
     }
@@ -136,7 +190,7 @@
     } catch {
       saved = null;
     }
-    economy = new Economy(saved);
+    economy = new Economy(saved, character);
   }
 
   function persistEconomy() {
@@ -228,7 +282,7 @@
     const dt = Math.min((now - lastTime) / 1000, MAX_DT);
     lastTime = now;
 
-    // The pet itself (and its rock/dust/bubble/tired-flinch/spawns) only exists
+    // The pet itself (and its dust/bubble/tired-flinch/spawns/balls) only exists
     // visually while a Room is showing — not while browsing the Shop. Stats keep
     // ticking regardless, same "background" philosophy as the Pomodoro timer.
     const petVisible = currentScreen === "room";
@@ -251,11 +305,11 @@
     }
 
     if (petVisible) {
-      updateRock(dt);
       applyBehavior(now);
       positionBubble();
       updateDust(dt);
       updateSpawns(now);
+      updateBalls(dt);
     }
     renderBars();
 
@@ -268,24 +322,20 @@
     if (!economy.consumeFood(item.id)) return; // shouldn't happen; tray only shows owned items
     stats.feed(item.satiety);
     pet.eat();
-    economy.addCoins(Economy.FEED_COIN_REWARD);
-    persistEconomy();
     spawnFx(item.emoji);
+    awardCoins(Economy.FEED_COIN_REWARD, { x: pet.x + sprite.size / 2 + 6, y: pet.y - 24 });
     say(pick(FEED_PHRASES, lang));
     renderBars();
-    renderCoinBadge();
   }
 
   function useToy(item) {
     if (gameOver) return;
     stats.play(item.satietyCost);
     pet.playful(item.forceAnim);
-    economy.addCoins(item.coinReward);
-    persistEconomy();
     spawnFx("🎉");
+    awardCoins(item.coinReward, { x: pet.x + sprite.size / 2 + 6, y: pet.y - 24 });
     say(pick(PLAY_PHRASES, lang));
     renderBars();
-    renderCoinBadge();
   }
 
   // --- game over / revive ------------------------------------------------------
@@ -294,6 +344,8 @@
     gameOver = true;
     pet.die();
     els.itemTray.innerHTML = ""; // nothing to feed/play with while fainted
+    clearBallLayer();
+    stopMicIfActive();
     els.gameover.hidden = false;
     clearTimeout(bubbleTimer);
     els.bubble.classList.remove("visible"); // don't leave a stray bubble under the modal
@@ -305,7 +357,7 @@
     pet.revive();
     gameOver = false;
     els.gameover.hidden = true;
-    renderTray();
+    renderBottomPanel();
     renderBars();
     persist();
   }
@@ -321,7 +373,7 @@
     if (justLeftGround) {
       el.classList.add("visible");
       dustSprite.play("dust_jump", () => el.classList.remove("visible"), true);
-    } else if (pet.state === "run" || pushing) {
+    } else if (pet.state === "run") {
       el.classList.add("visible");
       dustSprite.play("dust_run");
     } else if (dustSprite.name !== "dust_jump") {
@@ -331,48 +383,7 @@
     if (el.classList.contains("visible")) dustSprite.tick(dt);
   }
 
-  // --- rock: a prop the walking/running pet pushes -----------------------------
-  function rockMax() {
-    return Math.max(0, els.stage.clientWidth - ROCK_WIDTH);
-  }
-
-  function placeRock(x) {
-    rockX = Math.min(Math.max(x, 0), rockMax());
-    els.rock.style.transform = `translate3d(${rockX}px, 0, 0)`;
-  }
-
-  function updateRock(dt) {
-    const grounded = pet.state === "walk" || pet.state === "run";
-    const stopPushing = () => {
-      if (!pushing) return;
-      pushing = false;
-      if (grounded) sprite.play(pet.state);
-    };
-
-    if (!grounded) return stopPushing();
-
-    const petCenter = pet.x + sprite.size / 2;
-    const rockCenter = rockX + ROCK_WIDTH / 2;
-    const touching = Math.abs(petCenter - rockCenter) < sprite.size / 2 + ROCK_WIDTH / 2 - PUSH_REACH;
-    const movingToward = (pet.targetX - pet.x) * (rockCenter - petCenter) > 0;
-
-    if (!touching || !movingToward) return stopPushing();
-
-    pushing = true;
-    const dir = petCenter < rockCenter ? 1 : -1;
-    const speed = pet.state === "run" ? 150 : 60; // matches pet.js RUN_SPEED / WALK_SPEED
-    const before = rockX;
-    placeRock(rockX + dir * speed * dt);
-    sprite.play("push");
-    sprite.face(dir);
-
-    if (rockX === before && (rockX <= 0 || rockX >= rockMax())) {
-      pet.targetX = dir > 0 ? 0 : pet.maxX();
-      stopPushing();
-    }
-  }
-
-  // --- coin / poop stage spawns -------------------------------------------------
+  // --- coin / poop stage spawns (Game Room only) -------------------------------
   function randomStagePos(size) {
     const w = els.stage.clientWidth;
     const h = els.stage.clientHeight;
@@ -395,9 +406,7 @@
       "click",
       () => {
         clearTimeout(fadeTimer);
-        economy.addCoins(reward);
-        persistEconomy();
-        renderCoinBadge();
+        awardCoins(reward, pos);
         el.remove();
       },
       { once: true }
@@ -436,34 +445,27 @@
     }
   }
 
-  // --- drag-and-drop tray: food (Kitchen) or toys (any Field room) ------------
+  // --- drag-and-drop tray: food (Kitchen only) ---------------------------------
   function renderTray() {
     els.itemTray.innerHTML = "";
     if (gameOver) return;
-    const room = currentRoomDef();
-    if (!room) return;
 
-    const entries =
-      room.type === "kitchen"
-        ? economy.ownedFoodList().map((item) => ({ kind: "food", item }))
-        : economy.ownedToyList().map((item) => ({ kind: "toy", item }));
-
-    for (const { kind, item } of entries) {
+    for (const item of economy.ownedFoodList()) {
       const el = document.createElement("div");
       el.className = "tray-item";
       el.textContent = item.emoji;
-      if (kind === "food" && item.quantity !== Infinity) {
+      if (item.quantity !== Infinity) {
         const qty = document.createElement("span");
         qty.className = "tray-item-qty";
         qty.textContent = "×" + item.quantity;
         el.appendChild(qty);
       }
-      el.addEventListener("pointerdown", (e) => startDrag(e, el, kind, item));
+      el.addEventListener("pointerdown", (e) => startDrag(e, el, item));
       els.itemTray.appendChild(el);
     }
   }
 
-  function startDrag(e, originEl, kind, item) {
+  function startDrag(e, originEl, item) {
     if (gameOver || dragState) return;
     e.preventDefault();
     originEl.classList.add("dragging");
@@ -478,7 +480,7 @@
     };
     move(e.clientX, e.clientY);
 
-    dragState = { kind, item, originEl, ghost };
+    dragState = { item, originEl, ghost };
 
     const onMove = (ev) => move(ev.clientX, ev.clientY);
     const onUp = (ev) => {
@@ -490,23 +492,25 @@
     window.addEventListener("pointerup", onUp);
   }
 
-  function finishDrag(x, y) {
-    if (!dragState) return;
-    const { kind, item, originEl, ghost } = dragState;
-    dragState = null;
-
+  function hitTestPet(x, y) {
     const petRect = els.petEl.getBoundingClientRect();
-    const hit =
+    return (
       x >= petRect.left - DROP_HIT_MARGIN &&
       x <= petRect.right + DROP_HIT_MARGIN &&
       y >= petRect.top - DROP_HIT_MARGIN &&
-      y <= petRect.bottom + DROP_HIT_MARGIN;
+      y <= petRect.bottom + DROP_HIT_MARGIN
+    );
+  }
 
-    if (hit && !gameOver) {
+  function finishDrag(x, y) {
+    if (!dragState) return;
+    const { item, originEl, ghost } = dragState;
+    dragState = null;
+
+    if (hitTestPet(x, y) && !gameOver) {
       ghost.remove();
       originEl.classList.remove("dragging");
-      if (kind === "food") useFood(item);
-      else useToy(item);
+      useFood(item);
       renderTray(); // quantities/coins may have changed
       return;
     }
@@ -527,17 +531,206 @@
     );
   }
 
+  // --- Game Room: bouncing ball shelf ------------------------------------------
+  function clearBallLayer() {
+    if (els.ballLayer) els.ballLayer.innerHTML = "";
+    balls = [];
+  }
+
+  function positionBall(ball) {
+    ball.el.style.transform = `translate3d(${ball.x}px, ${ball.y}px, 0)`;
+  }
+
+  function launchBall(ball) {
+    if (ball.state !== "shelved") return;
+    ball.state = "bouncing";
+    ball.vx = (Math.random() > 0.5 ? 1 : -1) * randomBetween(60, 140);
+    ball.vy = -randomBetween(250, 400);
+  }
+
+  function renderBallShelf() {
+    if (!els.ballLayer) return;
+    els.ballLayer.innerHTML = "";
+    balls = [];
+
+    const allBalls = Object.values(Economy.CATALOG.toys);
+    const ownedIds = new Set(economy.ownedToys);
+    const stageW = els.stage.clientWidth;
+    const stageH = els.stage.clientHeight;
+    const slotGap = stageW / (allBalls.length + 1);
+
+    allBalls.forEach((item, i) => {
+      const owned = ownedIds.has(item.id);
+      const homeX = Math.round(slotGap * (i + 1) - BALL_SIZE / 2);
+      const homeY = Math.round(stageH - BALL_SIZE - BALL_SHELF_MARGIN);
+
+      const el = document.createElement("div");
+      el.className = "ball-sprite" + (owned ? "" : " locked");
+      el.textContent = item.emoji;
+      els.ballLayer.appendChild(el);
+
+      const ball = { item, el, x: homeX, y: homeY, vx: 0, vy: 0, homeX, homeY, state: owned ? "shelved" : "locked" };
+      balls.push(ball);
+      positionBall(ball);
+
+      if (owned) {
+        el.addEventListener("pointerdown", (e) => onBallPointerDown(e, ball));
+      } else {
+        el.addEventListener("pointerdown", () => say(localize(BALL_LOCKED_HINT, lang)));
+      }
+    });
+
+    // Stagger a capped subset of owned balls into bouncing so the stage doesn't
+    // feel chaotic with all 6 active at once; the rest cycle in via sendBallToShelf.
+    balls
+      .filter((b) => b.state === "shelved")
+      .slice(0, MAX_ACTIVE_BOUNCERS)
+      .forEach((b, i) => setTimeout(() => launchBall(b), i * 400));
+  }
+
+  function updateBalls(dt) {
+    if (balls.length === 0) return;
+    const bounds = { width: els.stage.clientWidth, height: els.stage.clientHeight, size: BALL_SIZE };
+    for (const ball of balls) {
+      if (ball.state !== "bouncing") continue;
+      NS.BallPhysics.stepBall(ball, dt, bounds);
+      positionBall(ball);
+    }
+  }
+
+  function sendBallToShelf(ball) {
+    ball.state = "returning";
+    ball.x = ball.homeX;
+    ball.y = ball.homeY;
+    ball.el.style.transition = "transform 0.3s ease-out";
+    positionBall(ball);
+    setTimeout(() => {
+      ball.el.style.transition = "";
+      ball.state = "shelved";
+      setTimeout(() => launchBall(ball), SHELF_HOLD_MS);
+    }, 320);
+  }
+
+  function resumeBounceAt(ball, clientX, clientY, opts = {}) {
+    const stageRect = els.stage.getBoundingClientRect();
+    ball.x = Math.min(Math.max(clientX - stageRect.left - BALL_SIZE / 2, 0), els.stage.clientWidth - BALL_SIZE);
+    ball.y = Math.min(Math.max(clientY - stageRect.top - BALL_SIZE / 2, 0), els.stage.clientHeight - BALL_SIZE);
+    ball.vx = opts.vx ?? (Math.random() > 0.5 ? 1 : -1) * randomBetween(40, 100);
+    ball.vy = opts.vy ?? 0;
+    ball.state = "bouncing";
+    positionBall(ball);
+  }
+
+  function finishBallDrag(ball, ghost, x, y) {
+    ghost.remove();
+    if (hitTestPet(x, y) && !gameOver) {
+      useToy(ball.item);
+      resumeBounceAt(ball, x, y, { vx: 0, vy: -randomBetween(150, 300) });
+      return;
+    }
+    // A ball's "origin" is a moving physics object, not a static tray slot, so a
+    // miss just resumes bouncing from the drop point rather than snapping back.
+    resumeBounceAt(ball, x, y);
+  }
+
+  function onBallPointerDown(e, ball) {
+    if (ball.state === "locked" || ball.state === "dragged" || ball.state === "returning") return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let dragging = false;
+    let ghost = null;
+
+    const onMove = (ev) => {
+      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > TAP_THRESHOLD_PX) {
+        dragging = true;
+        ball.state = "dragged";
+        ghost = document.createElement("div");
+        ghost.className = "drag-ghost";
+        ghost.textContent = ball.item.emoji;
+        document.body.appendChild(ghost);
+      }
+      if (dragging) {
+        ghost.style.transform = `translate3d(${ev.clientX - 28}px, ${ev.clientY - 28}px, 0)`;
+      }
+    };
+    const onUp = (ev) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (dragging) finishBallDrag(ball, ghost, ev.clientX, ev.clientY);
+      else sendBallToShelf(ball);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  // --- Bedroom: mic record + pitch-shifted playback ----------------------------
+  function stopMicIfActive() {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+    micStream?.getTracks().forEach((t) => t.stop());
+    micStream = null;
+    micState = "idle";
+    els.micBtn?.classList.remove("recording");
+  }
+
+  async function toggleMic() {
+    if (gameOver) return;
+    if (micState === "recording") {
+      mediaRecorder.stop();
+      return;
+    }
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      say(localize(MIC_DENIED, lang));
+      return;
+    }
+    micChunks = [];
+    mediaRecorder = new MediaRecorder(micStream);
+    mediaRecorder.ondataavailable = (e) => micChunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      micStream?.getTracks().forEach((t) => t.stop());
+      micStream = null;
+      playPitchedRecording();
+    };
+    mediaRecorder.start();
+    micState = "recording";
+    els.micBtn?.classList.add("recording");
+  }
+
+  async function playPitchedRecording() {
+    micState = "idle";
+    els.micBtn?.classList.remove("recording");
+    if (micChunks.length === 0) return;
+    try {
+      const ctx = NS.getAudioContext();
+      const buf = await new Blob(micChunks, { type: "audio/webm" }).arrayBuffer();
+      const decoded = await ctx.decodeAudioData(buf);
+      const source = ctx.createBufferSource();
+      source.buffer = decoded;
+      source.playbackRate.value = MIC_PITCH;
+      source.connect(ctx.destination);
+      const durationMs = (decoded.duration / MIC_PITCH) * 1000;
+      els.petEl.style.setProperty("--talk-dur", durationMs / 1000 + "s");
+      els.petEl.classList.add("talking");
+      source.onended = () => els.petEl.classList.remove("talking");
+      source.start();
+    } catch {
+      /* decode/playback failure — nothing to recover, just drop it */
+    }
+  }
+
   // --- shop ---------------------------------------------------------------------
-  function shopCardBase(item) {
+  function shopCardBase(icon, name) {
     const card = document.createElement("div");
     card.className = "shop-item";
-    const icon = document.createElement("span");
-    icon.className = "shop-item-icon";
-    icon.textContent = item.emoji || "🏡"; // rooms have no emoji; a house stands in
-    const name = document.createElement("span");
-    name.className = "shop-item-name";
-    name.textContent = localize(item.names, lang);
-    card.append(icon, name);
+    const iconEl = document.createElement("span");
+    iconEl.className = "shop-item-icon";
+    iconEl.textContent = icon;
+    const nameEl = document.createElement("span");
+    nameEl.className = "shop-item-name";
+    nameEl.textContent = name;
+    card.append(iconEl, nameEl);
     return card;
   }
 
@@ -550,24 +743,24 @@
     return row;
   }
 
-  function buyButton(owned, price, onBuy) {
+  function buyButton(owned, price, label, onBuy) {
     const btn = document.createElement("button");
     btn.className = "btn" + (owned ? " owned" : "");
-    btn.textContent = owned ? localize(OWNED_LABEL, lang) : localize(BUY_LABEL, lang);
+    btn.textContent = owned ? localize(OWNED_LABEL, lang) : label ?? localize(BUY_LABEL, lang);
     btn.disabled = owned || !economy.canAfford(price);
     btn.addEventListener("click", onBuy);
     return btn;
   }
 
   function renderFoodCard(item) {
-    const card = shopCardBase(item);
+    const card = shopCardBase(item.emoji, localize(item.names, lang));
     card.appendChild(priceRow(item.price));
     const qty = document.createElement("span");
     qty.className = "shop-item-qty";
     qty.textContent = "×" + economy.foodQuantity(item.id);
     card.appendChild(qty);
     card.appendChild(
-      buyButton(false, item.price, () => {
+      buyButton(false, item.price, null, () => {
         if (economy.buyFood(item.id)) {
           persistEconomy();
           renderShop();
@@ -580,15 +773,15 @@
   }
 
   function renderToyCard(item) {
-    const card = shopCardBase(item);
+    const card = shopCardBase(item.emoji, localize(item.names, lang));
     const owned = economy.ownedToys.includes(item.id);
     if (!owned) card.appendChild(priceRow(item.price));
     card.appendChild(
-      buyButton(owned, item.price, () => {
+      buyButton(owned, item.price, null, () => {
         if (economy.buyToy(item.id)) {
           persistEconomy();
           renderShop();
-          renderTray();
+          if (currentRoomDef().type === "field") renderBallShelf();
           renderCoinBadge();
         }
       })
@@ -596,13 +789,13 @@
     return card;
   }
 
-  function renderRoomCard(item) {
-    const card = shopCardBase(item);
-    const owned = economy.ownedRooms.includes(item.id);
+  function renderCharacterCard(item) {
+    const card = shopCardBase(CHARACTER_EMOJI[item.id] || "🐣", localize(CHARACTER_NAMES[item.id] || {}, lang) || item.id);
+    const owned = economy.ownedCharacters.includes(item.id);
     if (!owned) card.appendChild(priceRow(item.price));
     card.appendChild(
-      buyButton(owned, item.price, () => {
-        if (economy.buyRoom(item.id)) {
+      buyButton(owned, item.price, null, () => {
+        if (economy.buyCharacter(item.id)) {
           persistEconomy();
           renderShop();
           renderCoinBadge();
@@ -610,63 +803,133 @@
       })
     );
     return card;
+  }
+
+  function renderBackgroundShop() {
+    const room = currentRoomDef();
+    const list = Economy.CATALOG.backgrounds[room.id] || [];
+    const owned = economy.ownedBackgrounds[room.id];
+    const current = economy.currentBackgroundId[room.id];
+
+    const defaultCard = shopCardBase("🎨", localize(DEFAULT_BG_LABEL, lang));
+    defaultCard.appendChild(
+      buyButton(current === null, 0, localize(EQUIP_LABEL, lang), () => {
+        economy.setCurrentBackground(room.id, null);
+        persistEconomy();
+        applyRoomVisuals();
+        renderShop();
+      })
+    );
+    els.shopGrid.appendChild(defaultCard);
+
+    list.forEach((item, i) => {
+      const isOwned = owned.includes(item.id);
+      const isCurrent = current === item.id;
+      const card = shopCardBase("🖼️", `${localize(DEFAULT_BG_LABEL, lang)} ${i + 2}`);
+      if (!isOwned) card.appendChild(priceRow(item.price));
+      card.appendChild(
+        buyButton(isCurrent, item.price, isOwned ? localize(EQUIP_LABEL, lang) : null, () => {
+          if (isOwned) {
+            economy.setCurrentBackground(room.id, item.id);
+          } else if (!economy.buyBackground(room.id, item.id)) {
+            return;
+          }
+          persistEconomy();
+          applyRoomVisuals();
+          renderShop();
+        })
+      );
+      els.shopGrid.appendChild(card);
+    });
+  }
+
+  function renderShopTabs() {
+    const room = currentRoomDef();
+    const tabs = SHOP_TABS[room.id] || [];
+    if (!tabs.includes(shopCategory)) shopCategory = tabs[0];
+    els.shopTabs.innerHTML = "";
+    for (const cat of tabs) {
+      const btn = document.createElement("button");
+      btn.className = "shop-tab" + (cat === shopCategory ? " active" : "");
+      btn.textContent = localize(SHOP_TAB_LABELS[cat], lang);
+      btn.addEventListener("click", () => {
+        shopCategory = cat;
+        renderShop();
+      });
+      els.shopTabs.appendChild(btn);
+    }
   }
 
   function renderShop() {
     renderCoinBadge();
+    renderShopTabs();
     els.shopGrid.innerHTML = "";
 
-    if (shopCategory === "foods") {
-      for (const item of Object.values(Economy.CATALOG.foods)) {
-        if (item.id === Economy.FREE_FOOD_ID) continue; // free kibble isn't "bought"
-        els.shopGrid.appendChild(renderFoodCard(item));
-      }
-    } else if (shopCategory === "toys") {
+    if (shopCategory === "backgrounds") {
+      renderBackgroundShop();
+    } else if (shopCategory === "balls") {
       for (const item of Object.values(Economy.CATALOG.toys)) {
         if (item.id === Economy.DEFAULT_TOY_ID) continue; // the ball is always owned
         els.shopGrid.appendChild(renderToyCard(item));
       }
+    } else if (shopCategory === "characters") {
+      for (const item of Object.values(Economy.CATALOG.characters)) {
+        if (item.id === Economy.DEFAULT_CHARACTER_ID) continue; // pink is always owned
+        els.shopGrid.appendChild(renderCharacterCard(item));
+      }
     } else {
-      for (const item of Object.values(Economy.CATALOG.rooms)) {
-        if (Economy.DEFAULT_ROOMS.includes(item.id)) continue; // free rooms aren't "bought"
-        els.shopGrid.appendChild(renderRoomCard(item));
+      // food sub-categories: drinks / sweets / meals
+      for (const item of Object.values(Economy.CATALOG.foods)) {
+        if (item.category !== shopCategory || item.id === Economy.FREE_FOOD_ID) continue;
+        els.shopGrid.appendChild(renderFoodCard(item));
       }
     }
   }
 
-  // --- rooms: background + tray-type + the field-swiper ------------------------
+  // --- rooms: background + per-room bottom panel + the field-swiper -----------
   function currentRoomDef() {
-    return Economy.CATALOG.rooms[economy.currentRoomId];
+    return ROOMS[economy.currentRoomId];
   }
 
   function applyRoomVisuals() {
     const room = currentRoomDef();
     if (!room) return;
 
-    els.stage.style.backgroundImage =
-      room.background.kind === "image"
-        ? `url("${chrome.runtime.getURL("assets/" + room.background.value)}")`
-        : ROOM_GRADIENTS[room.background.value] || "";
-
-    // The plant/teddy decorations were Basic Field's specifically — every other
-    // room (including CSS-gradient ones) hides them. The decor elements are
-    // optional (not present in every markup revision), so this must not throw
-    // if they're missing — a crash here previously aborted start() before it
-    // ever reached requestAnimationFrame(frame), freezing the whole pet.
-    const showDecor = room.id === "basic";
-    els.decorLeft?.classList.toggle("hidden", !showDecor);
-    els.decorRight?.classList.toggle("hidden", !showDecor);
+    const bgId = economy.currentBackgroundId[room.id];
+    const bgItem = bgId && (Economy.CATALOG.backgrounds[room.id] || []).find((b) => b.id === bgId);
+    if (bgItem) {
+      els.stage.style.backgroundImage = `url("${chrome.runtime.getURL("assets/" + bgItem.image)}")`;
+      els.stage.style.backgroundColor = "";
+    } else {
+      els.stage.style.backgroundImage = "";
+      els.stage.style.backgroundColor = room.bg;
+    }
 
     els.swiperLabel.textContent = localize(room.names, lang);
-    renderTray();
+    renderBottomPanel();
+  }
+
+  // Exactly one of the tray / ball-shelf / mic panel is shown at a time, keyed
+  // off the current room's type.
+  function renderBottomPanel() {
+    const room = currentRoomDef();
+
+    els.itemTray.style.display = room.type === "kitchen" ? "flex" : "none";
+    if (els.micPanel) els.micPanel.style.display = room.type === "bedroom" ? "flex" : "none";
+
+    if (room.type === "kitchen") renderTray();
+    else els.itemTray.innerHTML = "";
+
+    if (room.type === "field") renderBallShelf();
+    else clearBallLayer();
+
+    if (room.type !== "bedroom") stopMicIfActive();
   }
 
   function cycleRoom(direction) {
-    const rooms = economy.roomList();
-    if (rooms.length === 0) return;
-    const idx = Math.max(0, rooms.findIndex((r) => r.id === economy.currentRoomId));
-    const next = rooms[(idx + direction + rooms.length) % rooms.length];
-    economy.setCurrentRoom(next.id);
+    const idx = ROOM_ORDER.indexOf(economy.currentRoomId);
+    const next = ROOM_ORDER[(idx + direction + ROOM_ORDER.length) % ROOM_ORDER.length];
+    economy.setCurrentRoom(next);
     persistEconomy();
     applyRoomVisuals();
   }
@@ -677,11 +940,9 @@
       stage: document.getElementById("stage"),
       petEl: document.getElementById("pet"),
       dust: document.getElementById("dust"),
-      rock: document.getElementById("rock"),
+      ballLayer: document.getElementById("ball-layer"),
       bubble: document.getElementById("bubble"),
       taskTag: document.getElementById("task-tag"),
-      decorLeft: document.querySelector("#stage .decor.left"),
-      decorRight: document.querySelector("#stage .decor.right"),
       fillHp: document.getElementById("fill-hp"),
       fillSatiety: document.getElementById("fill-satiety"),
       fillStamina: document.getElementById("fill-stamina"),
@@ -693,6 +954,8 @@
       gameover: document.getElementById("gameover"),
       reviveBtn: document.getElementById("btn-revive"),
       itemTray: document.getElementById("item-tray"),
+      micPanel: document.getElementById("mic-panel"),
+      micBtn: document.getElementById("mic-btn"),
 
       swiper: document.getElementById("field-swiper"),
       swiperLabel: document.getElementById("swiper-label"),
@@ -700,32 +963,24 @@
       swiperNext: document.getElementById("swiper-next"),
       shopView: document.getElementById("shop-view"),
       shopGrid: document.getElementById("shop-grid"),
-      shopTabs: document.querySelectorAll(".shop-tab"),
+      shopTabs: document.getElementById("shop-tabs"),
       groups: {
         room: document.getElementById("actions-room"),
         shop: document.getElementById("actions-shop"),
       },
     };
 
-    const getBounds = () => {
-      let offset = 0;
-      if (currentScreen === "basic") {
-        offset = 35; // Stand slightly higher in the grass
-      } else if (currentScreen === "game") {
-        offset = 65; // Stand on the platform above the grid
-      }
-      return {
-        width: els.stage.clientWidth,
-        height: els.stage.clientHeight - offset
-      };
-    };
+    const getBounds = () => ({
+      width: els.stage.clientWidth,
+      height: els.stage.clientHeight,
+    });
     sprite = new NS.Sprite(els.petEl, character, SCALE);
     pet = new NS.Pet(sprite, { say, getBounds });
     NS.attachInput(els.petEl, pet); // poke / drag / throw
     dustSprite = new NS.Sprite(els.dust, character, SCALE);
 
     els.reviveBtn.addEventListener("click", revive);
-    els.rock.addEventListener("click", () => placeRock(els.stage.clientWidth * 0.7));
+    els.micBtn?.addEventListener("click", toggleMic);
     // Additive: input.js already preventDefault()s the native menu on the pet for
     // all three hosts. This listener is room-only, so the extension/overlay are
     // untouched by the task-reveal feature.
@@ -745,18 +1000,11 @@
       // "alarm" buttons are handled separately in app.js (they open the
       // top-level Pomodoro screen) — nothing to do here.
     });
-    els.shopTabs.forEach((tab) => {
-      tab.addEventListener("click", () => {
-        shopCategory = tab.dataset.category;
-        els.shopTabs.forEach((t) => t.classList.toggle("active", t === tab));
-        renderShop();
-      });
-    });
 
     window.addEventListener("resize", () => {
       if (currentScreen === "room") {
         pet.onResize();
-        placeRock(rockX); // reclamp into the resized stage
+        if (currentRoomDef().type === "field") renderBallShelf();
       }
     });
     window.addEventListener("beforeunload", () => {
@@ -775,13 +1023,12 @@
     });
   }
 
-  // Character art (idle preview, rock, dust) is per-character, so the room's
+  // Character art (idle preview, dust) is per-character, so the room's
   // decorative sprites need to be repointed whenever the chosen friend changes.
   function applyCharacter(char) {
     character = char;
     sprite.setCharacter(char);
     dustSprite.setCharacter(char);
-    els.rock.style.backgroundImage = `url("${chrome.runtime.getURL(`assets/${char}/rock.png`)}")`;
   }
 
   function changeScreen(screenName) {
@@ -793,13 +1040,14 @@
       els.shopView.style.display = "none";
       els.stage.style.display = "block";
       els.swiper.style.display = "flex";
-      els.itemTray.style.display = "flex";
       applyRoomVisuals();
       pet.onResize();
     } else {
       els.stage.style.display = "none";
       els.swiper.style.display = "none";
       els.itemTray.style.display = "none";
+      if (els.micPanel) els.micPanel.style.display = "none";
+      stopMicIfActive();
       els.shopView.style.display = "flex";
       renderShop();
     }
@@ -812,10 +1060,9 @@
     lang = language || "ja";
     applyCharacter(char);
     pet.setLanguage(lang);
-    placeRock(0); // left side of the stage to start
 
-    loadStats();
     loadEconomy();
+    loadStats();
     gameOver = false;
     els.gameover.hidden = true;
     if (stats.hp <= 0) enterGameOver(); // offline decay already emptied HP
@@ -844,6 +1091,7 @@
     if (rafId) cancelAnimationFrame(rafId);
     clearInterval(batteryTimer);
     clearInterval(persistTimer);
+    stopMicIfActive();
     persist();
     persistEconomy();
   }

@@ -28,12 +28,7 @@
       task_input_placeholder: "What are you working on?",
       tasks_empty: "No tasks yet.",
       shop_title: "Shop",
-      shop_tab_foods: "Food",
-      shop_tab_toys: "Toys",
-      shop_tab_rooms: "Rooms",
-      btn_alarm: "⏰ Alarm",
-      btn_shop: "🛒 Shop",
-      btn_field: "🏡 Field",
+      locked_hint: "Buy in the Bedroom Shop",
     },
     ja: {
       start_subtitle: "デスクトップに住む小さな友達",
@@ -58,12 +53,7 @@
       task_input_placeholder: "何に取り組みますか？",
       tasks_empty: "タスクはまだありません。",
       shop_title: "ショップ",
-      shop_tab_foods: "フード",
-      shop_tab_toys: "おもちゃ",
-      shop_tab_rooms: "ルーム",
-      btn_alarm: "⏰ アラーム",
-      btn_shop: "🛒 ショップ",
-      btn_field: "🏡 フィールド",
+      locked_hint: "寝室のショップで購入",
     },
     ko: {
       start_subtitle: "데스크톱에 사는 작은 친구",
@@ -88,14 +78,22 @@
       task_input_placeholder: "무엇을 할까요?",
       tasks_empty: "아직 할 일이 없어요.",
       shop_title: "상점",
-      shop_tab_foods: "음식",
-      shop_tab_toys: "장난감",
-      shop_tab_rooms: "방",
-      btn_alarm: "⏰ 알람",
-      btn_shop: "🛒 상점",
-      btn_field: "🏡 필드",
+      locked_hint: "침실 상점에서 구매",
     },
   };
+
+  // The app is authored at a fixed 390x844 (iPhone 12/13/14 logical size); scale
+  // that fixed frame to fit the real window rather than rewriting app.css's
+  // fixed-px layout to relative units.
+  const APP_WIDTH = 390;
+  const APP_HEIGHT = 844;
+  const appScaleEl = document.getElementById("app-scale");
+  function applyAppScale() {
+    const scale = Math.min(window.innerWidth / APP_WIDTH, window.innerHeight / APP_HEIGHT);
+    appScaleEl.style.transform = `scale(${scale})`;
+  }
+  window.addEventListener("resize", applyAppScale);
+  applyAppScale();
 
   const screens = {
     start: document.getElementById("screen-start"),
@@ -104,8 +102,11 @@
     pomodoro: document.getElementById("screen-pomodoro"),
   };
   const charCards = document.querySelectorAll("#screen-select .char-card");
+  const selectConfirmBtn = document.getElementById("select-confirm");
   const langButtons = document.querySelectorAll(".lang-btn");
   const petNameEl = document.getElementById("room-pet-name");
+
+  const ECONOMY_KEY = "tama-economy";
 
   const modeTabs = document.querySelectorAll(".mode-tab");
   const timerDisplay = document.getElementById("timer-display");
@@ -124,9 +125,45 @@
 
   let lang = "ja";
   let selectedChar = "pink";
+  let ownedCharacters = ["pink"];
   let tasks = [];
   let addingTask = false;
   let pomodoro;
+
+  // Side-effect-free: reads which characters are unlocked without mutating
+  // anything, so it's safe to call just to refresh the Select screen's lock UI.
+  function readOwnedCharacters() {
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(ECONOMY_KEY));
+    } catch {
+      saved = null;
+    }
+    return new NS.Economy(saved).ownedCharacters;
+  }
+
+  // Ownership can change mid-session (buying a character in the Bedroom Shop
+  // without leaving the Room first), so this is re-read fresh every time the
+  // Select screen is (re)shown, not cached from boot.
+  function refreshCharacterLocks() {
+    ownedCharacters = readOwnedCharacters();
+    charCards.forEach((c) => {
+      const char = c.dataset.char;
+      const owned = ownedCharacters.includes(char);
+      c.classList.toggle("locked", !owned);
+      const priceEl = c.querySelector(".lock-price");
+      if (priceEl) {
+        const price = NS.Economy.CATALOG.characters[char]?.price ?? 0;
+        priceEl.textContent = price + " 🪙";
+      }
+      c.title = owned ? "" : translations[lang]?.locked_hint || "";
+    });
+    updateConfirmState();
+  }
+
+  function updateConfirmState() {
+    selectConfirmBtn.disabled = !ownedCharacters.includes(selectedChar);
+  }
 
   function showScreen(name) {
     for (const [key, el] of Object.entries(screens)) {
@@ -146,14 +183,17 @@
     NS.Room.setLanguage(next);
     chrome.storage.local.set({ language: next });
     // Dynamic labels that a static data-i18n sweep can't reach: the empty-tasks
-    // message and the Start/Pause label, which depends on run state.
+    // message, the Start/Pause label (depends on run state), and the locked-
+    // character hint (not a data-i18n element, it's set as a `title` attribute).
     renderTasks();
     updateTimerButton();
+    refreshCharacterLocks();
   }
 
   function selectCard(char) {
     selectedChar = char;
     charCards.forEach((c) => c.classList.toggle("selected", c.dataset.char === char));
+    updateConfirmState();
   }
 
   function nameFor(char) {
@@ -335,7 +375,8 @@
 
   charCards.forEach((card) => card.addEventListener("click", () => selectCard(card.dataset.char)));
 
-  document.getElementById("select-confirm").addEventListener("click", async () => {
+  selectConfirmBtn.addEventListener("click", async () => {
+    if (!ownedCharacters.includes(selectedChar)) return; // guarded by disabled state too
     await chrome.storage.local.set({ character: selectedChar });
     petNameEl.textContent = nameFor(selectedChar);
     showScreen("room"); // show first so the stage has real dimensions
@@ -344,6 +385,7 @@
 
   document.getElementById("room-back").addEventListener("click", () => {
     NS.Room.stop();
+    refreshCharacterLocks();
     selectCard(selectedChar);
     showScreen("select");
   });
@@ -416,12 +458,26 @@
     loadPomodoro();
 
     const saved = await chrome.storage.local.get(["language", "character"]);
-    applyLanguage(saved.language || "ja");
-    selectCard(saved.character || "pink");
+    applyLanguage(saved.language || "ja"); // also calls refreshCharacterLocks()
+
+    // A character already chosen (and still owned) skips Start/Select entirely
+    // and jumps straight into the Room — character selection is a one-time
+    // choice; the topbar's "‹" back button is the only way to return to Select
+    // afterward (to switch to another owned character, or preview a locked one).
+    if (saved.character && ownedCharacters.includes(saved.character)) {
+      selectedChar = saved.character;
+      charCards.forEach((c) => c.classList.toggle("selected", c.dataset.char === selectedChar));
+      petNameEl.textContent = nameFor(selectedChar);
+      showScreen("room");
+      NS.Room.start(selectedChar, lang);
+    } else {
+      selectCard("pink");
+      showScreen("start");
+    }
 
     modeTabs.forEach((t) => t.classList.toggle("active", t.dataset.mode === pomodoro.mode));
     updateTimerDisplay();
-    
+
     window.desktopBridge.onNavigatePomodoro?.(() => {
       showScreen("pomodoro");
     });
