@@ -4,7 +4,7 @@ const fs = require("fs");
 const { execFile } = require("child_process");
 
 const APP_ROOT = app.getAppPath();
-const DEFAULTS = { language: "ja", character: "pink" };
+const DEFAULTS = { language: "ja", character: "pink", alarmRinging: false, alarmMuted: false };
 const CHARACTERS = ["pink", "owlet", "dude"];
 const LANGUAGES = [["ja", "日本語"], ["en", "English"], ["ko", "한국어"]];
 

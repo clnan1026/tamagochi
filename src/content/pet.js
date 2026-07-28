@@ -13,6 +13,12 @@
     ja: ["やめてよ〜 💢", "ひぃ！ 😂", "やめて😒", "ちょっと！", "つんつん..", "やめて〜"], 
     ko: ["아야! 💢", "하지 마~ 😂", "앗! 간지러워!", "저리 가!", "치이.."]
   };
+
+  const ALARM_RUNNING_PHRASES = {
+    en: ["Time is up! ⏰", "Wake up! 🔔", "Turn it off! 🛑", "It's time! ⏰"],
+    ja: ["時間だよ〜 ⏰", "起きて〜 🔔", "アラーム止めて 🛑", "時間だよ〜 ⏰"],
+    ko: ["시간 됐어~! ⏰", "일어나~! 🔔", "알람 꺼줘~! 🛑", "시간이야~! ⏰"]
+  };
   const randomBetween = (min, max) => min + Math.random() * (max - min);
 
   class Pet {
@@ -26,6 +32,7 @@
 
       this.lang = "ja";
       this.speedScale = 1; // room lowers this when battery/stamina is low
+      this.alarmRinging = false;
 
       this.x = randomBetween(0, this.maxX());
       this.y = this.groundY();
@@ -48,6 +55,18 @@
     }
 
     update(dt) {
+      if (this.alarmRinging) {
+        this.alarmSayTimer = (this.alarmSayTimer || 0) - dt;
+        if (this.alarmSayTimer <= 0) {
+          const phrases = ALARM_RUNNING_PHRASES[this.lang] || ALARM_RUNNING_PHRASES.ja;
+          const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+          this.say(phrase);
+          this.alarmSayTimer = 1.8; // Speak every 1.8 seconds (keeps bubble alive/flashing)
+        }
+      } else {
+        this.alarmSayTimer = 0;
+      }
+
       switch (this.state) {
         case "idle":
           this.#updateIdle(dt);
@@ -80,6 +99,17 @@
 
     #updateIdle(dt) {
       this.vx = 0;
+      if (this.alarmRinging) {
+        const roll = Math.random();
+        if (roll < 0.6) {
+          this.#jump();
+        } else {
+          this.targetX = randomBetween(0, this.maxX());
+          this.state = "run";
+          this.sprite.play("run");
+        }
+        return;
+      }
       this.timer -= dt;
       if (this.timer > 0) return;
 
@@ -147,6 +177,13 @@
     }
 
     #rest() {
+      if (this.alarmRinging) {
+        this.state = "idle";
+        this.timer = 0;
+        this.vx = 0;
+        this.sprite.play("idle");
+        return;
+      }
       this.state = "idle";
       this.timer = randomBetween(0.8, 3);
       this.vx = 0;
@@ -163,6 +200,15 @@
     
     setLanguage(lang) {
       this.lang = lang;
+    }
+
+    setAlarmRinging(ringing) {
+      this.alarmRinging = !!ringing;
+      if (this.alarmRinging) {
+        if (this.state === "idle" || this.state === "react") {
+          this.timer = 0;
+        }
+      }
     }
 
     // Feed reaction: a chomp. Play reaction: a jump or a combo flourish, or a

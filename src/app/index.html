@@ -166,6 +166,7 @@
       <div class="timer-actions">
         <button id="timer-reset" class="icon-btn" title="Reset">↺</button>
         <button id="timer-toggle" class="btn" data-i18n="start_timer_button">Start</button>
+        <button id="timer-mute" class="icon-btn" title="Mute">🔊</button>
       </div>
 
       <div class="duration-editor" id="duration-editor" hidden>
@@ -192,6 +193,18 @@
         <button id="task-add" class="task-add" data-i18n="add_task_button">+ Add Task</button>
       </div>
     </section>
+
+    <!-- Alarm Alert Overlay -->
+    <div id="alarm-overlay" class="alarm-overlay" style="display: none;">
+      <div class="alarm-overlay-bg"></div>
+      <div class="alarm-overlay-content">
+        <span class="alarm-icon">🔔</span>
+        <div class="alarm-clock" id="alarm-clock-time">00:00</div>
+        <div class="alarm-date" id="alarm-clock-date">Thursday, June 19</div>
+        <h2 class="alarm-title" data-i18n="alarm_alert_title">Time's Up!</h2>
+        <button id="btn-alarm-stop" class="btn btn-danger" data-i18n="btn_stop_alarm">Stop</button>
+      </div>
+    </div>
     </div>
 
     <!-- shared pet engine + app -->

@@ -35,6 +35,8 @@
     };
   }
 
+  let alarmLoopTimer = null;
+
   // Fired from a real user gesture (the Start button) or the tick driver; either
   // way `getContext()` lazily creates/reuses one AudioContext for the app's lifetime.
   function playAlarm() {
@@ -51,6 +53,28 @@
     }
   }
 
+  function startAlarm(muted) {
+    stopAlarm(); // guard
+    const audioCtx = getContext();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    if (muted) return;
+
+    playAlarm();
+    alarmLoopTimer = setInterval(() => {
+      playAlarm();
+    }, 5000);
+  }
+
+  function stopAlarm() {
+    if (alarmLoopTimer) {
+      clearInterval(alarmLoopTimer);
+      alarmLoopTimer = null;
+    }
+    if (ctx && ctx.state === "running") {
+      ctx.suspend();
+    }
+  }
+
   // Warms up the AudioContext from a real user gesture (the Start button) so a
   // later unattended playAlarm() — possibly minutes on — isn't the first thing
   // asking the browser to create audio output.
@@ -60,6 +84,8 @@
   }
 
   NS.playAlarm = playAlarm;
+  NS.startAlarm = startAlarm;
+  NS.stopAlarm = stopAlarm;
   NS.primeAudio = primeAudio;
   NS.getAudioContext = getContext; // shared with room.js's mic playback (pitch-shifted recording)
 })();

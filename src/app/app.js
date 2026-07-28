@@ -32,6 +32,8 @@
       btn_pomodoro: "⏰ Pomodoro",
       btn_shop: "🛒 Shop",
       btn_room: "🏡 Room",
+      alarm_alert_title: "Time's Up!",
+      btn_stop_alarm: "Stop",
     },
     ja: {
       start_subtitle: "デスクトップに住む小さな友達",
@@ -60,6 +62,8 @@
       btn_pomodoro: "⏰ ポモドーロ",
       btn_shop: "🛒 ショップ",
       btn_room: "🏡 部屋",
+      alarm_alert_title: "時間だよ！",
+      btn_stop_alarm: "ストップ",
     },
     ko: {
       start_subtitle: "데스크톱에 사는 작은 친구",
@@ -88,6 +92,8 @@
       btn_pomodoro: "⏰ 뽀모도로",
       btn_shop: "🛒 상점",
       btn_room: "🏡 방",
+      alarm_alert_title: "시간이 다 됐어요!",
+      btn_stop_alarm: "끄기",
     },
   };
 
@@ -118,6 +124,7 @@
   const timerDisplay = document.getElementById("timer-display");
   const timerToggle = document.getElementById("timer-toggle");
   const timerReset = document.getElementById("timer-reset");
+  const timerMute = document.getElementById("timer-mute");
   const durationEditBtn = document.getElementById("duration-edit-btn");
   const durationEditor = document.getElementById("duration-editor");
   const durationInputs = {
@@ -134,6 +141,7 @@
 
   let lang = "ja";
   let selectedChar = "pink";
+  let alarmMuted = false;
   let tasks = [];
   let addingTask = false;
   let pomodoro;
@@ -332,9 +340,39 @@
     closeDurationEditor();
   }
 
+  const alarmOverlay = document.getElementById("alarm-overlay");
+
+  function updateAlarmClock() {
+    const now = new Date();
+    const hrs = String(now.getHours()).padStart(2, "0");
+    const mins = String(now.getMinutes()).padStart(2, "0");
+    document.getElementById("alarm-clock-time").textContent = `${hrs}:${mins}`;
+
+    const days = {
+      en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+      ja: ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"],
+      ko: ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"]
+    };
+    const dayName = days[lang]?.[now.getDay()] || days.en[now.getDay()];
+    
+    let dateStr = "";
+    if (lang === "ko") {
+      dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 ${dayName}`;
+    } else if (lang === "ja") {
+      dateStr = `${now.getFullYear()}年 ${now.getMonth() + 1}月 ${now.getDate()}日 ${dayName}`;
+    } else {
+      const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      dateStr = `${dayName}, ${months[now.getMonth()]} ${now.getDate()}`;
+    }
+    document.getElementById("alarm-clock-date").textContent = dateStr;
+  }
+
   function onPomodoroFinish() {
-    NS.playAlarm();
+    NS.startAlarm(alarmMuted);
     NS.Room.onAlarm?.();
+    chrome.storage.local.set({ alarmRinging: true });
+    updateAlarmClock();
+    alarmOverlay.style.display = "flex";
   }
 
   function tickPomodoro() {
@@ -342,6 +380,9 @@
     updateTimerDisplay();
     updateTimerButton();
     persistPomodoro();
+    if (alarmOverlay.style.display === "flex") {
+      updateAlarmClock();
+    }
   }
 
   // --- wiring ---------------------------------------------------------------
@@ -374,6 +415,8 @@
     btn.addEventListener("click", () => showScreen("pomodoro"))
   );
   document.getElementById("pomodoro-back").addEventListener("click", () => {
+    chrome.storage.local.set({ alarmRinging: false });
+    NS.stopAlarm();
     showScreen("room");
   });
 
@@ -388,6 +431,8 @@
   );
 
   timerToggle.addEventListener("click", () => {
+    chrome.storage.local.set({ alarmRinging: false });
+    NS.stopAlarm();
     if (pomodoro.running) {
       pomodoro.pause();
     } else {
@@ -400,11 +445,24 @@
   });
 
   timerReset.addEventListener("click", () => {
+    chrome.storage.local.set({ alarmRinging: false });
+    NS.stopAlarm();
     pomodoro.reset();
     updateTimerDisplay();
     updateTimerButton();
     persistPomodoro();
   });
+
+  timerMute.addEventListener("click", () => {
+    alarmMuted = !alarmMuted;
+    chrome.storage.local.set({ alarmMuted });
+    updateMuteButton();
+  });
+
+  function updateMuteButton() {
+    timerMute.textContent = alarmMuted ? "🔇" : "🔊";
+    timerMute.title = alarmMuted ? "Unmute" : "Mute";
+  }
 
   durationEditBtn.addEventListener("click", () => {
     if (durationEditor.hidden) openDurationEditor();
@@ -425,8 +483,16 @@
     loadTasks();
     loadPomodoro();
 
-    const saved = await chrome.storage.local.get(["language", "character"]);
+    const saved = await chrome.storage.local.get(["language", "character", "alarmMuted", "alarmRinging"]);
+    alarmMuted = !!saved.alarmMuted;
+    updateMuteButton();
     applyLanguage(saved.language || "ja");
+
+    if (saved.alarmRinging) {
+      updateAlarmClock();
+      alarmOverlay.style.display = "flex";
+      NS.startAlarm(alarmMuted);
+    }
 
     // A character already chosen skips Start/Select entirely and jumps straight
     // into the Room — character selection is a one-time choice; the topbar's
@@ -448,6 +514,25 @@
 
     window.desktopBridge.onNavigatePomodoro?.(() => {
       showScreen("pomodoro");
+    });
+
+    document.getElementById("btn-alarm-stop").addEventListener("click", () => {
+      chrome.storage.local.set({ alarmRinging: false });
+      NS.stopAlarm();
+      alarmOverlay.style.display = "none";
+    });
+
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+      if (namespace !== "local") return;
+      if (changes.alarmRinging) {
+        if (changes.alarmRinging.newValue) {
+          updateAlarmClock();
+          alarmOverlay.style.display = "flex";
+        } else {
+          alarmOverlay.style.display = "none";
+          NS.stopAlarm();
+        }
+      }
     });
 
     setInterval(tickPomodoro, 1000);

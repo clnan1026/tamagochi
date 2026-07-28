@@ -808,3 +808,120 @@ html[lang="ko"] #shop-coin-count { font-size: 14px; }
   from { transform: scale(0.4); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
+
+/* --- Alarm Alert Overlay --- */
+.alarm-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.alarm-overlay-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at center, rgba(15, 23, 42, 0.9) 0%, rgba(2, 6, 23, 0.95) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.alarm-overlay-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px;
+  width: 80%;
+  max-width: 360px;
+  color: #ffffff;
+  animation: alarmPopIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes alarmPopIn {
+  0% { transform: scale(0.8); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.alarm-overlay .alarm-icon {
+  font-size: 64px;
+  margin-bottom: 24px;
+  display: inline-block;
+  animation: alarmWiggle 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes alarmWiggle {
+  0% { transform: rotate(-15deg) scale(1); }
+  100% { transform: rotate(15deg) scale(1.1); }
+}
+
+.alarm-overlay .alarm-clock {
+  font-family: 'Outfit', sans-serif;
+  font-size: 72px;
+  font-weight: 700;
+  letter-spacing: -2px;
+  line-height: 1;
+  background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 4px 12px rgba(255, 255, 255, 0.1));
+}
+
+.alarm-overlay .alarm-date {
+  font-size: 15px;
+  font-weight: 500;
+  color: #94a3b8;
+  margin-bottom: 24px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.alarm-overlay .alarm-title {
+  font-family: 'Press Start 2P', 'VT323', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-color, #fbbf24);
+  margin-bottom: 40px;
+  text-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+}
+
+.alarm-overlay .btn-danger {
+  width: 100%;
+  padding: 16px 32px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border: none;
+  border-radius: 9999px;
+  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  animation: alarmPulse 1.5s infinite;
+}
+
+.alarm-overlay .btn-danger:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+  box-shadow: 0 12px 28px rgba(239, 68, 68, 0.5), inset 0 2px 0 rgba(255, 255, 255, 0.3);
+}
+
+.alarm-overlay .btn-danger:active {
+  transform: translateY(1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+@keyframes alarmPulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+  70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}

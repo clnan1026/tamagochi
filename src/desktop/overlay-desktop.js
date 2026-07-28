@@ -22,13 +22,15 @@
     bubbleTimer = setTimeout(() => bubbleEl.classList.remove("visible"), BUBBLE_MS);
   };
 
-  chrome.storage.local.get(["language", "character"]).then((result) => {
+  chrome.storage.local.get(["language", "character", "alarmRinging"]).then((result) => {
     const savedLang = result.language || "ja";
     const savedChar = result.character || "pink";
+    const savedAlarm = !!result.alarmRinging;
 
     const sprite = new NS.Sprite(petEl, savedChar, SCALE);
     const pet = new NS.Pet(sprite, { say });
     pet.setLanguage(savedLang);
+    pet.setAlarmRinging(savedAlarm);
     NS.attachInput(petEl, pet);
 
     petEl.addEventListener("contextmenu", (e) => {
@@ -40,6 +42,7 @@
       if (namespace !== "local") return;
       if (changes.language) pet.setLanguage(changes.language.newValue);
       if (changes.character) sprite.setCharacter(changes.character.newValue);
+      if (changes.alarmRinging) pet.setAlarmRinging(!!changes.alarmRinging.newValue);
     });
 
     window.desktopBridge.onDisplayChanged(() => {
